@@ -13,7 +13,7 @@ const handleLogin = async () => {
   isLoading.value = true
   setTimeout(() => {
     isLoading.value = false
-    router.push('/')
+    router.push('/onboarding')
   }, 800)
 }
 </script>
@@ -93,7 +93,7 @@ const handleLogin = async () => {
           <div class="pt-6 border-t border-[#303134] text-center">
             <p class="text-zinc-400">
               新用户？ 
-              <a href="#" class="text-blue-500 hover:text-blue-400 font-bold ml-1 transition-colors">
+              <a href="#" @click.prevent="router.push('/register')" class="text-blue-500 hover:text-blue-400 font-bold ml-1 transition-colors">
                 注册教育账号
               </a>
             </p>
