@@ -2,172 +2,151 @@
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
 import { 
-  BrainCircuit, 
-  FileText, 
-  GitFork, 
-  ClipboardCheck, 
-  Video, 
-  Code2, 
-  ShieldCheck,
-  Send,
-  Loader2
+  BrainCircuit, FileText, GitFork, ClipboardCheck, Video, Code2, ShieldCheck 
 } from 'lucide-vue-next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import TopicInput from './components/TopicInput.vue'
+import AgentTerminal from './components/AgentTerminal.vue'
+import ResourceDisplay from './components/ResourceDisplay.vue'
+import AgentStatusCard from './components/AgentStatusCard.vue'
+import AgentDetailView from './components/AgentDetailView.vue'
 import { Badge } from '@/components/ui/badge'
 
-// 模拟智能体状态
+// 1. 状态定义
+const isGenerating = ref(false)
+const currentTopic = ref('')
+const logs = ref<any[]>([])
+const selectedAgent = ref<any>(null) // 控制深度对话弹窗
+
 const agents = reactive([
-  { id: 'manager', name: '主控中枢', role: 'Manager', status: 'idle', icon: BrainCircuit },
-  { id: 'professor', name: '教授智能体', role: 'Professor', status: 'idle', icon: FileText },
-  { id: 'architect', name: '架构师智能体', role: 'Architect', status: 'idle', icon: GitFork },
-  { id: 'examiner', name: '考官智能体', role: 'Examiner', status: 'idle', icon: ClipboardCheck },
-  { id: 'director', name: '导演智能体', role: 'Director', status: 'idle', icon: Video },
-  { id: 'hacker', name: '极客智能体', role: 'Hacker', status: 'idle', icon: Code2 },
-  { id: 'reviewer', name: '质量审查', role: 'Reviewer', status: 'idle', icon: ShieldCheck },
+  { id: 'manager', name: '主控中枢', role: 'Manager', status: 'idle', icon: BrainCircuit, color: 'text-purple-400' },
+  { id: 'professor', name: '教授智能体', role: 'Professor', status: 'idle', icon: FileText, color: 'text-blue-400' },
+  { id: 'architect', name: '架构师智能体', role: 'Architect', status: 'idle', icon: GitFork, color: 'text-orange-400' },
+  { id: 'examiner', name: '考官智能体', role: 'Examiner', status: 'idle', icon: ClipboardCheck, color: 'text-pink-400' },
+  { id: 'director', name: '导演智能体', role: 'Director', status: 'idle', icon: Video, color: 'text-cyan-400' },
+  { id: 'hacker', name: '极客智能体', role: 'Hacker', status: 'idle', icon: Code2, color: 'text-green-400' },
+  { id: 'reviewer', name: '质量审查', role: 'Reviewer', status: 'idle', icon: ShieldCheck, color: 'text-red-400' },
 ])
 
-const topic = ref('')
-const isGenerating = ref(false)
-const progress = ref(0)
+const addLog = (agent: string, message: string, type: 'info' | 'success' | 'warn' = 'info') => {
+  logs.value.push({ id: Date.now() + Math.random(), agent, message, type })
+}
 
-// 模拟生成流程
-const startGeneration = async () => {
-  if (!topic.value) return
+// 2. 模拟多智能体流水线逻辑
+const runWorkflow = async (topic: string) => {
   isGenerating.value = true
-  
-  // 1. Manager 启动
-  agents[0].status = 'running'
-  
-  // 模拟各个 Agent 依次启动的视觉效果
-  for (let i = 1; i < agents.length - 1; i++) {
-    await new Promise(resolve => setTimeout(resolve, 800))
-    agents[i].status = 'running'
-    progress.value = (i / (agents.length - 1)) * 100
-  }
+  currentTopic.value = topic
+  logs.value = []
+  agents.forEach(a => a.status = 'idle')
 
-  // 模拟审查
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  agents[agents.length - 1].status = 'running'
-  
-  // 全部完成
-  agents.forEach(a => a.status = 'success')
+  // --- Step 1: Manager 分析 ---
+  agents[0].status = 'running'
+  addLog('Manager', `收到主题: "${topic}"，正在进行语义拆解...`, 'info')
+  await new Promise(r => setTimeout(r, 1200))
+  addLog('Manager', `拆解成功。已调度 5 名专家智能体并行生成资源。`, 'success')
+  agents[0].status = 'success'
+
+  // --- Step 2: Parallel Generation (并行模拟) ---
+  const experts = agents.slice(1, 6)
+  const taskPromises = experts.map(async (agent, index) => {
+    agent.status = 'running'
+    addLog(agent.role, `正在分析相关知识点...`, 'info')
+    await new Promise(r => setTimeout(r, 1500 + index * 800))
+    addLog(agent.role, `初步草案生成完成。`, 'success')
+    agent.status = 'success'
+  })
+
+  await Promise.all(taskPromises)
+
+  // --- Step 3: Reviewer 审核 ---
+  agents[6].status = 'running'
+  addLog('Reviewer', `正在检查幻觉并校准难度...`, 'info')
+  await new Promise(r => setTimeout(r, 1500))
+  addLog('Reviewer', `全量资源审核通过。`, 'success')
+  agents[6].status = 'success'
+
   isGenerating.value = false
+}
+
+// 3. 点击智能体卡片进入详情
+const handleAgentClick = (agent: any) => {
+  if (agent.status === 'success') {
+    selectedAgent.value = agent
+  }
 }
 </script>
 
 <template>
-  <div class="flex flex-col h-full bg-[#0b0b0b] text-slate-200">
-    <!-- 顶部输入区: Google AI Studio Style -->
-    <header class="border-b border-white/10 p-6">
-      <div class="max-w-5xl mx-auto">
-        <h1 class="text-2xl font-semibold mb-4 bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-          内容制造车间 (Content Factory)
-        </h1>
-        <div class="relative flex items-center">
-          <input 
-            v-model="topic"
-            placeholder="输入教学主题 (例如: 梯度下降算法的几何解释...)"
-            class="w-full bg-[#1e1e1e] border border-white/10 rounded-xl px-5 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all pr-32"
-          />
-          <Button 
-            @click="startGeneration" 
-            :disabled="isGenerating"
-            class="absolute right-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-6"
-          >
-            <Loader2 v-if="isGenerating" class="mr-2 h-4 w-4 animate-spin" />
-            <Send v-else class="mr-2 h-4 w-4" />
-            协作生成
-          </Button>
-        </div>
-      </div>
+  <div class="flex flex-col h-full bg-[#0b0b0b] text-slate-200 overflow-hidden relative">
+    <!-- 顶部输入 -->
+    <header class="border-b border-white/5 py-10 px-6 bg-gradient-to-b from-blue-900/5 to-transparent">
+      <TopicInput :isGenerating="isGenerating" @start="runWorkflow" />
     </header>
 
-    <main class="flex-1 flex overflow-hidden">
-      <!-- 左侧：智能体流水线状态 -->
-      <aside class="w-80 border-r border-white/10 p-4 overflow-y-auto bg-[#0f0f0f]">
-        <h3 class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">智能体集群状态</h3>
-        <div class="space-y-3">
-          <div 
-            v-for="agent in agents" 
-            :key="agent.id"
-            :class="[
-              'p-3 rounded-lg border transition-all duration-500',
-              agent.status === 'running' ? 'bg-blue-500/10 border-blue-500/50 animate-pulse' : 
-              agent.status === 'success' ? 'bg-green-500/5 border-green-500/30' : 'bg-[#1a1a1a] border-white/5'
-            ]"
-          >
-            <div class="flex items-center gap-3">
-              <component :is="agent.icon" :class="['h-5 w-5', agent.status === 'running' ? 'text-blue-400' : 'text-slate-400']" />
-              <div class="flex-1">
-                <div class="text-sm font-medium">{{ agent.name }}</div>
-                <div class="text-[10px] text-slate-500">{{ agent.role }}</div>
-              </div>
-              <Badge v-if="agent.status === 'success'" class="bg-green-500/20 text-green-400 border-none h-5 text-[10px]">PASS</Badge>
-            </div>
+    <main class="flex-1 flex overflow-hidden p-6 gap-6">
+      <!-- 左侧：工作台控制面板 -->
+      <aside class="w-80 flex flex-col gap-6">
+        <div class="bg-[#141414] border border-white/5 rounded-3xl p-5 flex-1 flex flex-col shadow-2xl relative overflow-hidden">
+          <h3 class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-5 flex items-center gap-2 px-1">
+            <span class="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+            专家集群状态
+          </h3>
+          
+          <!-- 智能体列表 -->
+          <div class="space-y-3 overflow-y-auto pr-1 custom-scrollbar">
+            <AgentStatusCard 
+              v-for="agent in agents" 
+              :key="agent.id" 
+              :agent="agent" 
+              @click="handleAgentClick(agent)"
+              :class="[
+                agent.status === 'success' ? 'cursor-pointer hover:translate-x-1 active:scale-95 transition-all' : ''
+              ]"
+            />
           </div>
+
+          <!-- 底部提示 -->
+          <div v-if="!isGenerating && currentTopic" class="mt-4 p-3 bg-blue-500/5 rounded-xl border border-blue-500/10">
+            <p class="text-[10px] text-blue-400/80 leading-relaxed">
+              💡 点击带有 <span class="font-bold">READY/DONE</span> 标记的专家，可进入深度研讨室进行 1-on-1 对话。
+            </p>
+          </div>
+        </div>
+
+        <!-- 终端日志 -->
+        <div class="h-60">
+           <AgentTerminal :logs="logs" />
         </div>
       </aside>
 
-      <!-- 右侧：多模态内容预览区 -->
-      <section class="flex-1 overflow-y-auto p-6">
-        <Tabs defaultValue="doc" class="w-full">
-          <TabsList class="bg-[#1e1e1e] border-white/5 mb-6">
-            <TabsTrigger value="doc">课程文档</TabsTrigger>
-            <TabsTrigger value="mindmap">知识图谱</TabsTrigger>
-            <TabsTrigger value="quiz">评测题目</TabsTrigger>
-            <TabsTrigger value="video">视频脚本</TabsTrigger>
-            <TabsTrigger value="code">实操代码</TabsTrigger>
-          </TabsList>
-
-          <!-- 模拟内容展示：此处后续对接具体的渲染组件 -->
-          <TabsContent value="doc" class="space-y-4">
-             <Card class="bg-[#1a1a1a] border-white/10 text-slate-300">
-               <CardContent class="p-6 prose prose-invert max-w-none">
-                  <div v-if="!isGenerating && progress === 0" class="text-slate-500 italic">等待主题输入...</div>
-                  <div v-else>
-                    <h2 class="text-blue-400"># 梯度下降算法 (Gradient Descent)</h2>
-                    <p>梯度下降是机器学习中最重要的优化算法之一...</p>
-                    <!-- 此处可集成 Markdown 渲染 -->
-                  </div>
-               </CardContent>
-             </Card>
-          </TabsContent>
-          
-          <TabsContent value="mindmap">
-             <div class="h-[500px] w-full bg-[#1a1a1a] rounded-xl border border-white/10 flex items-center justify-center">
-                <div class="text-slate-500 text-center">
-                  <GitFork class="h-12 w-12 mx-auto mb-2 opacity-20" />
-                  <p>Mermaid 流程图加载中...</p>
-                </div>
-             </div>
-          </TabsContent>
-
-          <TabsContent value="code">
-             <div class="rounded-xl overflow-hidden border border-white/10">
-                <div class="bg-[#2d2d2d] px-4 py-2 text-xs text-slate-400 flex justify-between">
-                  <span>gradient_descent.py</span>
-                  <span>Python</span>
-                </div>
-                <pre class="p-4 bg-[#1e1e1e] text-green-400 font-mono text-sm"><code>def gradient_descent(x, y, lr=0.01):
-    # 极客智能体生成的代码模板
-    pass</code></pre>
-             </div>
-          </TabsContent>
-        </Tabs>
+      <!-- 右侧：主展示区 -->
+      <section class="flex-1 min-w-0">
+        <ResourceDisplay 
+          :isGenerating="isGenerating" 
+          :topic="currentTopic" 
+        />
       </section>
     </main>
+
+    <!-- 深度对话研讨室 (Overlay) -->
+    <Transition
+      enter-active-class="transition duration-500 ease-out"
+      enter-from-class="opacity-0 translate-y-10 scale-95"
+      enter-to-class="opacity-100 translate-y-0 scale-100"
+      leave-active-class="transition duration-300 ease-in"
+      leave-from-class="opacity-100 translate-y-0 scale-100"
+      leave-to-class="opacity-0 translate-y-10 scale-95"
+    >
+      <AgentDetailView 
+        v-if="selectedAgent" 
+        :agent="selectedAgent" 
+        :topic="currentTopic"
+        @close="selectedAgent = null"
+      />
+    </Transition>
   </div>
 </template>
 
 <style scoped>
-/* 隐藏滚动条但保持功能 */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 10px;
-}
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
 </style>
