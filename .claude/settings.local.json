@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from app.main import app; print\\('OK'\\)\")",
+      "Bash(npm install *)",
+      "Bash(npx vue-tsc *)",
+      "Bash(npx vite *)",
+      "Bash(curl -s http://localhost:5173/login)",
+      "Bash(node -e ' *)"
+    ]
+  }
+}
