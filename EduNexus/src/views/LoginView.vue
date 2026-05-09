@@ -1,20 +1,63 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, GraduationCap, ArrowRight } from 'lucide-vue-next'
+import { Loader2, GraduationCap, ArrowRight, AlertCircle } from 'lucide-vue-next'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import apiClient from '@/api/client'
+import type { AuthResponse } from '@/types/auth'
 
 const router = useRouter()
 const isLoading = ref(false)
+const errorMessage = ref('')
+
+// 表单数据响应式对象
+const form = reactive({
+  email: '',
+  password: ''
+})
 
 const handleLogin = async () => {
+  // 基础表单校验
+  if (!form.email || !form.password) {
+    errorMessage.value = '请输入电子邮箱和密码'
+    return
+  }
+
   isLoading.value = true
-  setTimeout(() => {
+  errorMessage.value = ''
+
+  try {
+    // 1. 发起 API 请求
+    // 注意：确保后端 app/api/v1/auth.py 中的 login 路由接受 email 和 password
+    const { data } = await apiClient.post<AuthResponse>('/auth/login', {
+      email: form.email,
+      password: form.password
+    })
+
+    // 2. 持久化存储认证信息
+    localStorage.setItem('token', data.access_token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+
+    // 3. 逻辑跳转：已完成画像去首页，未完成去破冰
+    if (data.user.onboarding_completed) {
+      router.push('/')
+    } else {
+      router.push('/onboarding')
+    }
+  } catch (error: any) {
+    // 4. 错误处理：提取后端 FastAPI 返回的 detail 信息
+    console.error('Login failed:', error)
+    if (error.response && error.response.data) {
+      errorMessage.value = error.response.data.detail || '登录失败，请检查您的凭据'
+    } else {
+      errorMessage.value = '无法连接到服务器，请检查网络设置'
+    }
+  } finally {
     isLoading.value = false
-    router.push('/onboarding')
-  }, 800)
+  }
 }
 </script>
 
@@ -54,13 +97,24 @@ const handleLogin = async () => {
             <p class="text-zinc-500 text-sm">请输入您的账号凭据以继续</p>
           </div>
 
+          <!-- 错误提示组件 -->
+          <Transition name="fade">
+            <Alert v-if="errorMessage" variant="destructive" class="bg-red-500/10 border-red-500/20 text-red-400 rounded-xl">
+              <AlertCircle class="h-4 w-4" />
+              <AlertDescription>{{ errorMessage }}</AlertDescription>
+            </Alert>
+          </Transition>
+
           <!-- 表单区域 -->
           <div class="space-y-6">
             <div class="space-y-2">
               <Label for="email" class="text-xs font-bold text-zinc-500 ml-1 uppercase tracking-[0.2em]">电子邮箱</Label>
               <Input 
                 id="email" 
+                v-model="form.email"
+                type="email"
                 placeholder="name@edunexus.com" 
+                @keyup.enter="handleLogin"
                 class="h-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg px-6 transition-all placeholder:text-zinc-800"
               />
             </div>
@@ -72,8 +126,10 @@ const handleLogin = async () => {
               </div>
               <Input 
                 id="password" 
+                v-model="form.password"
                 type="password" 
                 placeholder="••••••••"
+                @keyup.enter="handleLogin"
                 class="h-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg px-6 transition-all placeholder:text-zinc-800"
               />
             </div>
@@ -121,5 +177,15 @@ input:-webkit-autofill:focus {
   -webkit-text-fill-color: white;
   -webkit-box-shadow: 0 0 0px 1000px #0b0b0b inset;
   transition: background-color 5000s ease-in-out 0s;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

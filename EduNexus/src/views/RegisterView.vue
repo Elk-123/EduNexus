@@ -4,10 +4,23 @@ import { useRouter } from 'vue-router'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, GraduationCap, User, Mail, Lock, ShieldCheck, UserPlus } from 'lucide-vue-next'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { 
+  Loader2, 
+  GraduationCap, 
+  User, 
+  Mail, 
+  Lock, 
+  ShieldCheck, 
+  UserPlus,
+  AlertCircle 
+} from 'lucide-vue-next'
+import apiClient from '@/api/client'
+import type { AuthResponse } from '@/types/auth'
 
 const router = useRouter()
 const isLoading = ref(false)
+const errorMessage = ref('')
 
 const formData = ref({
   username: '',
@@ -17,16 +30,54 @@ const formData = ref({
 })
 
 const handleRegister = async () => {
+  // 1. 基础校验
+  if (!formData.value.username || !formData.value.email || !formData.value.password) {
+    errorMessage.value = '请填写所有必填信息'
+    return
+  }
+
+  if (formData.value.password.length < 6) {
+    errorMessage.value = '密码长度至少需要 6 位'
+    return
+  }
+
+  if (formData.value.password !== formData.value.confirmPassword) {
+    errorMessage.value = '两次输入的密码不一致'
+    return
+  }
+
   isLoading.value = true
-  setTimeout(() => {
+  errorMessage.value = ''
+
+  try {
+    // 2. 发起注册请求
+    const { data } = await apiClient.post<AuthResponse>('/auth/register', {
+      username: formData.value.username,
+      email: formData.value.email,
+      password: formData.value.password
+    })
+
+    // 3. 注册成功逻辑：存储 Token 并跳转
+    localStorage.setItem('token', data.access_token)
+    localStorage.setItem('user', JSON.stringify(data.user))
+
+    // 注册后默认进入破冰流程
+    router.push('/onboarding')
+  } catch (error: any) {
+    console.error('Registration error:', error)
+    if (error.response && error.response.data) {
+      errorMessage.value = error.response.data.detail || '注册失败，请稍后重试'
+    } else {
+      errorMessage.value = '无法连接到服务器，请检查网络'
+    }
+  } finally {
     isLoading.value = false
-    router.push('/login')
-  }, 1000)
+  }
 }
 </script>
 
 <template>
-  <!-- 容器：使用 items-center justify-center 确保居中，p-4 防止贴边 -->
+  <!-- 容器 -->
   <div class="min-h-screen w-full flex flex-col items-center justify-center bg-[#0b0b0b] relative overflow-hidden p-4">
     
     <!-- 背景纹理 -->
@@ -36,10 +87,9 @@ const handleRegister = async () => {
     <div class="absolute top-[10%] left-[10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[140px] pointer-events-none"></div>
     <div class="absolute bottom-[10%] right-[10%] w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[140px] pointer-events-none"></div>
 
-    <!-- 容器：max-w-[600px] 宽屏设计 -->
     <div class="relative z-10 w-full max-w-[600px] flex flex-col items-center">
       
-      <!-- 头部： mb-6 压缩空间 -->
+      <!-- 头部 -->
       <div class="flex flex-col items-center mb-6 text-center">
         <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.3)] mb-3">
           <GraduationCap class="w-8 h-8 text-white" />
@@ -50,7 +100,7 @@ const handleRegister = async () => {
         <p class="text-zinc-500 text-sm">专业的智慧教育管理生态系统</p>
       </div>
 
-      <!-- 注册主卡片：p-8 平衡高度 -->
+      <!-- 注册主卡片 -->
       <div class="w-full bg-[#131314]/90 backdrop-blur-2xl border border-[#303134] rounded-[2.5rem] p-8 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.8)]">
         <div class="space-y-4">
           
@@ -59,7 +109,15 @@ const handleRegister = async () => {
             <p class="text-zinc-500 text-sm">请完善以下信息完成注册</p>
           </div>
 
-          <!-- 表单区域：text-lg 字体，h-[52px] 高度 -->
+          <!-- 错误提示 -->
+          <Transition name="fade">
+            <Alert v-if="errorMessage" variant="destructive" class="bg-red-500/10 border-red-500/20 text-red-400 rounded-xl py-3">
+              <AlertCircle class="h-4 w-4" />
+              <AlertDescription>{{ errorMessage }}</AlertDescription>
+            </Alert>
+          </Transition>
+
+          <!-- 表单区域 -->
           <div class="space-y-3.5">
             <!-- 用户名 -->
             <div class="space-y-1.5">
@@ -70,6 +128,7 @@ const handleRegister = async () => {
                   id="username" 
                   v-model="formData.username"
                   placeholder="您的姓名" 
+                  @keyup.enter="handleRegister"
                   class="h-[52px] pl-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg transition-all placeholder:text-zinc-800"
                 />
               </div>
@@ -85,6 +144,7 @@ const handleRegister = async () => {
                   type="email"
                   v-model="formData.email"
                   placeholder="name@edunexus.com" 
+                  @keyup.enter="handleRegister"
                   class="h-[52px] pl-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg transition-all placeholder:text-zinc-800"
                 />
               </div>
@@ -100,6 +160,7 @@ const handleRegister = async () => {
                   type="password" 
                   v-model="formData.password"
                   placeholder="••••••••"
+                  @keyup.enter="handleRegister"
                   class="h-[52px] pl-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg transition-all placeholder:text-zinc-800"
                 />
               </div>
@@ -115,6 +176,7 @@ const handleRegister = async () => {
                   type="password" 
                   v-model="formData.confirmPassword"
                   placeholder="••••••••"
+                  @keyup.enter="handleRegister"
                   class="h-[52px] pl-14 bg-[#0b0b0b] border-[#3c4043] focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded-2xl text-white text-lg transition-all placeholder:text-zinc-800"
                 />
               </div>
@@ -143,7 +205,7 @@ const handleRegister = async () => {
         </div>
       </div>
 
-      <!-- 底部脚注：压缩到 mt-4 以防超出屏幕 -->
+      <!-- 底部脚注 -->
       <div class="mt-4 flex items-center justify-center gap-4">
         <span class="h-px w-8 bg-zinc-800"></span>
         <p class="text-[10px] uppercase tracking-[0.5em] text-zinc-600 font-bold">
@@ -171,5 +233,15 @@ input:-webkit-autofill:focus {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>
