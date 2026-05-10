@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useAuthStore } from '@/stores/authStore'
 import { 
   Loader2, 
   GraduationCap, 
@@ -19,6 +20,7 @@ import apiClient from '@/api/client'
 import type { AuthResponse } from '@/types/auth'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const isLoading = ref(false)
 const errorMessage = ref('')
 
@@ -60,6 +62,7 @@ const handleRegister = async () => {
     // 3. 注册成功逻辑：存储 Token 并跳转
     localStorage.setItem('token', data.access_token)
     localStorage.setItem('user', JSON.stringify(data.user))
+    authStore.setAuth(data.access_token, data.user)
 
     // 注册后默认进入破冰流程
     router.push('/onboarding')

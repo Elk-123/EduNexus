@@ -1,9 +1,9 @@
 <!-- src/views/ContentFactory/components/AgentDetailView.vue -->
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { X, Send, Bot, User, Sparkles, MessageSquareQuote } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { chatWithAgent } from '@/api/factory'
 
 const props = defineProps<{
   agent: any
@@ -13,31 +13,31 @@ const props = defineProps<{
 const emit = defineEmits(['close'])
 
 const messages = ref([
-  { 
-    role: 'assistant', 
-    content: `你好！我是你的${props.agent.name}。关于“${props.topic}”，我已经为你准备好了初步的${props.agent.role === 'Hacker' ? '代码实验' : '分析文档'}。你想针对哪个细节进行深入探讨？` 
+  {
+    role: 'assistant',
+    content: `你好！我是你的${props.agent.name}。关于"${props.topic}"，我已经为你准备好了初步的${props.agent.role === 'Hacker' ? '代码实验' : '分析文档'}。你想针对哪个细节进行深入探讨？`
   }
 ])
 
 const input = ref('')
 const isTyping = ref(false)
 
-const sendMessage = () => {
-  if (!input.value.trim()) return
-  
+const sendMessage = async () => {
+  if (!input.value.trim() || isTyping.value) return
+
   messages.value.push({ role: 'user', content: input.value })
   const userQuery = input.value
   input.value = ''
   isTyping.value = true
 
-  // 模拟智能体回复
-  setTimeout(() => {
+  try {
+    const response = await chatWithAgent(props.agent.id, { message: userQuery })
+    messages.value.push({ role: 'assistant', content: response.reply })
+  } catch {
+    messages.value.push({ role: 'assistant', content: `抱歉，作为${props.agent.role}智能体，我暂时无法回答这个问题。请稍后重试。` })
+  } finally {
     isTyping.value = false
-    messages.value.push({ 
-      role: 'assistant', 
-      content: `作为一个${props.agent.role}，我认为在处理“${props.topic}”时，针对你提到的“${userQuery}”，我们需要注意以下几点... (这里是智能体的专业深度回答)` 
-    })
-  }, 1500)
+  }
 }
 </script>
 

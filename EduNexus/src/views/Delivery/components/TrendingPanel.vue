@@ -1,44 +1,38 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { 
-  TrendingUp, 
-  Github, 
-  MessageSquare, 
-  ExternalLink, 
-  Star, 
-  Flame 
-} from 'lucide-vue-next';
-import { Badge } from '@/components/ui/badge';
+import {
+  TrendingUp,
+  Github,
+  MessageSquare,
+  ExternalLink,
+  Star,
+  Flame
+} from 'lucide-vue-next'
+import { Badge } from '@/components/ui/badge'
+import type { TrendingItem } from '@/types/resources'
 
-const trends = ref([
-  {
-    id: 1,
-    source: 'GitHub',
-    icon: Github,
-    title: 'Meta-Llama-3.1-405B-Instruct 已经发布',
-    meta: '24.5k stars this week',
-    tag: 'LLM',
-    color: 'text-white'
-  },
-  {
-    id: 2,
-    source: 'StackOverflow',
-    icon: MessageSquare,
-    title: '为什么 WebAssembly 在 2024 年变得如此重要？',
-    meta: '120+ new answers',
-    tag: 'Wasm',
-    color: 'text-orange-400'
-  },
-  {
-    id: 3,
-    source: 'Arxiv',
-    icon: TrendingUp,
-    title: 'KAN: Kolmogorov-Arnold Networks 论文引起热议',
-    meta: 'New Architecture',
-    tag: 'Research',
-    color: 'text-blue-400'
+const props = withDefaults(defineProps<{
+  items?: TrendingItem[]
+}>(), {
+  items: () => [],
+})
+
+const sourceIcon = (source: string) => {
+  switch (source) {
+    case 'GitHub': return Github
+    case 'StackOverflow': return MessageSquare
+    case 'Arxiv': return TrendingUp
+    default: return Flame
   }
-]);
+}
+
+const sourceColor = (source: string) => {
+  switch (source) {
+    case 'GitHub': return 'text-white'
+    case 'StackOverflow': return 'text-orange-400'
+    case 'Arxiv': return 'text-blue-400'
+    default: return 'text-zinc-400'
+  }
+}
 </script>
 
 <template>
@@ -58,15 +52,15 @@ const trends = ref([
 
     <!-- Trend List -->
     <div class="space-y-4">
-      <div 
-        v-for="item in trends" 
-        :key="item.id" 
+      <div
+        v-for="(item, idx) in props.items"
+        :key="idx"
         class="group cursor-pointer space-y-2"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="flex-grow space-y-1">
             <div class="flex items-center gap-2">
-              <component :is="item.icon" :size="12" :class="item.color" class="opacity-70" />
+              <component :is="sourceIcon(item.source)" :size="12" :class="sourceColor(item.source)" class="opacity-70" />
               <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">{{ item.source }}</span>
             </div>
             <h5 class="text-xs font-medium text-zinc-300 group-hover:text-blue-400 transition-colors leading-snug">
@@ -76,7 +70,7 @@ const trends = ref([
           <ExternalLink :size="12" class="text-zinc-700 group-hover:text-zinc-400 mt-1" />
         </div>
 
-        <div class="flex items-center justify-between border-b border-zinc-800/50 pb-3 group-last:border-0 group-last:pb-0">
+        <div class="flex items-center justify-between border-b border-zinc-800/50 pb-3 last:border-0 last:pb-0" :class="{ 'border-0 pb-0': idx === props.items.length - 1 }">
           <Badge variant="outline" class="text-[9px] py-0 h-4 bg-zinc-900/50 border-zinc-800 text-zinc-500 font-normal">
             #{{ item.tag }}
           </Badge>

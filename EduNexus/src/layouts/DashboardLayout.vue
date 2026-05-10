@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppSidebar from '@/components/AppSidebar.vue'
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar'
-import { Search, User } from 'lucide-vue-next'
+import { Search } from 'lucide-vue-next'
 </script>
 
 <template>

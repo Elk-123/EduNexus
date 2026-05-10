@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
-import { 
-  Network, 
-  Sparkles, 
-  Zap, 
+import { ref, onMounted, computed } from 'vue'
+import {
+  Network,
+  Sparkles,
+  Zap,
   Info,
   RefreshCw,
   X,
@@ -14,112 +14,39 @@ import {
 } from 'lucide-vue-next'
 import KnowledgeGraph from './components/KnowledgeGraph.vue'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { useLearningStore } from '@/stores/learningStore'
+import type { KnowledgeNode } from '@/types/graph'
 
-// --- 数据结构定义 ---
-interface Node {
-  id: string;
-  label: string;
-  type: 'standard' | 'injected';
-  status: 'completed' | 'active' | 'pending';
-}
+const learningStore = useLearningStore()
 
-interface LearningPhase {
-  id: string;
-  title: string;
-  description: string;
-  status: 'completed' | 'current' | 'locked';
-  nodes: Node[]; // 该阶段对应的图谱节点
-}
-
-// --- 状态管理 ---
 const customGoal = ref('Transformer Architecture')
-const isPlanning = ref(false)
 const showAnalysis = ref(true)
-const activePhaseId = ref('p2') // 默认选中第二阶段
 
-// 模拟全流程数据：大课题的所有阶段
-const phases = ref<LearningPhase[]>([
-  {
-    id: 'p1',
-    title: '线性代数与微积分准备',
-    description: 'Transformer 基础数学门槛补齐',
-    status: 'completed',
-    nodes: [
-      { id: 'math-1', label: '张量运算', type: 'standard', status: 'completed' },
-      { id: 'math-2', label: '偏导数链式法则', type: 'standard', status: 'completed' }
-    ]
-  },
-  {
-    id: 'p2',
-    title: '矩阵运算强化 (AI 注入)',
-    description: '针对画像弱点生成的专项强化',
-    status: 'current',
-    nodes: [
-      { id: 'math-base', label: '线性代数基础', type: 'standard', status: 'completed' },
-      { id: 'matrix-boost', label: '矩阵运算强化', type: 'injected', status: 'active' },
-      { id: 'transformer-entry', label: '初步特征提取', type: 'standard', status: 'pending' }
-    ]
-  },
-  {
-    id: 'p3',
-    title: 'Transformer 核心架构',
-    description: '多头注意力与位置编码实现',
-    status: 'locked',
-    nodes: [
-      { id: 'attn', label: 'Self-Attention', type: 'standard', status: 'pending' },
-      { id: 'mha', label: 'Multi-Head Attention', type: 'standard', status: 'pending' },
-      { id: 'pos', label: 'Positional Encoding', type: 'standard', status: 'pending' }
-    ]
-  },
-  {
-    id: 'p4',
-    title: '模型训练与微调',
-    description: '损失函数选择与优化器配置',
-    status: 'locked',
-    nodes: [
-      { id: 'train', label: '训练循环', type: 'standard', status: 'pending' },
-      { id: 'finetune', label: '下游任务微调', type: 'standard', status: 'pending' }
-    ]
-  }
-])
+const isPlanning = computed(() => learningStore.isPlanning)
+const phases = computed(() => learningStore.phases)
+const activePhaseId = computed(() => learningStore.activePhaseId)
+const currentGraphNodes = computed(() => learningStore.currentGraphNodes)
+const analysisSummary = computed(() => learningStore.analysisSummary)
 
-// 计算属性：当前左侧展示的图谱数据
-const currentGraphNodes = computed(() => {
-  return phases.value.find(p => p.id === activePhaseId.value)?.nodes || []
-})
-
-// --- 交互逻辑 ---
-
-// 1. 模拟 AI 规划过程
 const handlePlan = () => {
   if (!customGoal.value) return
-  isPlanning.value = true
-  showAnalysis.value = false // 重置分析弹窗
-  
-  setTimeout(() => {
-    // 模拟根据输入改变数据逻辑
-    console.log("Planning for:", customGoal.value)
-    isPlanning.value = false
-    showAnalysis.value = true
-    activePhaseId.value = 'p2' // 重置到建议节点
-  }, 2000)
+  showAnalysis.value = true
+  learningStore.plan(customGoal.value)
 }
 
-// 2. 关闭画像分析弹窗
 const closeAnalysis = () => {
   showAnalysis.value = false
 }
 
-// 3. 切换阶段
 const selectPhase = (phaseId: string) => {
-  if (phases.value.find(p => p.id === phaseId)?.status === 'locked') return
-  activePhaseId.value = phaseId
+  learningStore.selectPhase(phaseId)
+}
+
+const hasInjectedNodes = (nodes: KnowledgeNode[]) => {
+  return nodes.some(n => n.type === 'injected')
 }
 
 onMounted(() => {
-  // 初始加载动画
   handlePlan()
 })
 </script>
@@ -187,8 +114,7 @@ onMounted(() => {
                     <span class="text-[9px] bg-blue-500/20 px-1 rounded text-blue-300 uppercase">Analysis</span>
                   </div>
                   <p class="text-[11px] text-slate-300 mt-2 leading-relaxed">
-                    发现您在 <span class="text-blue-300 font-bold italic">线性代数</span> 维度的掌握度仅为 0.42。
-                    系统已在当前阶段自动插入了 <span class="text-amber-400">矩阵运算强化</span> 模块，确保后续 Transformer 学习顺利。
+                    {{ analysisSummary }}
                   </p>
                 </div>
               </div>
@@ -206,9 +132,9 @@ onMounted(() => {
         </div>
 
         <!-- 图谱组件 -->
-        <KnowledgeGraph 
-          :nodes="currentGraphNodes" 
-          :active-id="activePhaseId" 
+        <KnowledgeGraph
+          :nodes="currentGraphNodes"
+          :active-id="activePhaseId"
         />
         
         <!-- 图例 -->
@@ -260,7 +186,7 @@ onMounted(() => {
                 'text-[10px] font-bold px-1.5 py-0.5 rounded',
                 activePhaseId === phase.id ? 'bg-blue-600 text-white' : 'bg-white/5 text-slate-500'
               ]">STEP {{ index + 1 }}</span>
-              <span v-if="phase.id === 'p2'" class="text-[9px] bg-amber-500/20 text-amber-500 px-1.5 rounded font-black tracking-tighter">AI INJECTED</span>
+              <span v-if="hasInjectedNodes(phase.nodes)" class="text-[9px] bg-amber-500/20 text-amber-500 px-1.5 rounded font-black tracking-tighter">AI INJECTED</span>
             </div>
 
             <h4 :class="['text-xs font-bold mb-1 transition-colors', activePhaseId === phase.id ? 'text-blue-300' : 'text-slate-300']">

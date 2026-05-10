@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     DATABASE_URL: str | None = None
 
+    GOOGLE_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
     def assemble_db_connection(cls, v: str | None, values: Any) -> Any:

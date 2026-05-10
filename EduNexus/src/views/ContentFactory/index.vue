@@ -1,73 +1,54 @@
 <!-- src/views/ContentFactory/index.vue -->
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
-import { 
-  BrainCircuit, FileText, GitFork, ClipboardCheck, Video, Code2, ShieldCheck 
+import { ref, computed } from 'vue'
+import {
+  BrainCircuit, FileText, GitFork, ClipboardCheck, Video, Code2, ShieldCheck
 } from 'lucide-vue-next'
 import TopicInput from './components/TopicInput.vue'
 import AgentTerminal from './components/AgentTerminal.vue'
 import ResourceDisplay from './components/ResourceDisplay.vue'
 import AgentStatusCard from './components/AgentStatusCard.vue'
 import AgentDetailView from './components/AgentDetailView.vue'
-import { Badge } from '@/components/ui/badge'
+import { useFactoryStore } from '@/stores/factoryStore'
 
-// 1. 状态定义
-const isGenerating = ref(false)
-const currentTopic = ref('')
-const logs = ref<any[]>([])
-const selectedAgent = ref<any>(null) // 控制深度对话弹窗
+const factoryStore = useFactoryStore()
 
-const agents = reactive([
-  { id: 'manager', name: '主控中枢', role: 'Manager', status: 'idle', icon: BrainCircuit, color: 'text-purple-400' },
-  { id: 'professor', name: '教授智能体', role: 'Professor', status: 'idle', icon: FileText, color: 'text-blue-400' },
-  { id: 'architect', name: '架构师智能体', role: 'Architect', status: 'idle', icon: GitFork, color: 'text-orange-400' },
-  { id: 'examiner', name: '考官智能体', role: 'Examiner', status: 'idle', icon: ClipboardCheck, color: 'text-pink-400' },
-  { id: 'director', name: '导演智能体', role: 'Director', status: 'idle', icon: Video, color: 'text-cyan-400' },
-  { id: 'hacker', name: '极客智能体', role: 'Hacker', status: 'idle', icon: Code2, color: 'text-green-400' },
-  { id: 'reviewer', name: '质量审查', role: 'Reviewer', status: 'idle', icon: ShieldCheck, color: 'text-red-400' },
-])
+// 智能体定义
+const agentDefs = [
+  { id: 'manager', name: '主控中枢', role: 'Manager', icon: BrainCircuit, color: 'text-purple-400' },
+  { id: 'professor', name: '教授智能体', role: 'Professor', icon: FileText, color: 'text-blue-400' },
+  { id: 'architect', name: '架构师智能体', role: 'Architect', icon: GitFork, color: 'text-orange-400' },
+  { id: 'examiner', name: '考官智能体', role: 'Examiner', icon: ClipboardCheck, color: 'text-pink-400' },
+  { id: 'director', name: '导演智能体', role: 'Director', icon: Video, color: 'text-cyan-400' },
+  { id: 'hacker', name: '极客智能体', role: 'Hacker', icon: Code2, color: 'text-green-400' },
+  { id: 'reviewer', name: '质量审查', role: 'Reviewer', icon: ShieldCheck, color: 'text-red-400' },
+]
 
-const addLog = (agent: string, message: string, type: 'info' | 'success' | 'warn' = 'info') => {
-  logs.value.push({ id: Date.now() + Math.random(), agent, message, type })
-}
+const selectedAgent = ref<any>(null)
 
-// 2. 模拟多智能体流水线逻辑
-const runWorkflow = async (topic: string) => {
-  isGenerating.value = true
-  currentTopic.value = topic
-  logs.value = []
-  agents.forEach(a => a.status = 'idle')
-
-  // --- Step 1: Manager 分析 ---
-  agents[0].status = 'running'
-  addLog('Manager', `收到主题: "${topic}"，正在进行语义拆解...`, 'info')
-  await new Promise(r => setTimeout(r, 1200))
-  addLog('Manager', `拆解成功。已调度 5 名专家智能体并行生成资源。`, 'success')
-  agents[0].status = 'success'
-
-  // --- Step 2: Parallel Generation (并行模拟) ---
-  const experts = agents.slice(1, 6)
-  const taskPromises = experts.map(async (agent, index) => {
-    agent.status = 'running'
-    addLog(agent.role, `正在分析相关知识点...`, 'info')
-    await new Promise(r => setTimeout(r, 1500 + index * 800))
-    addLog(agent.role, `初步草案生成完成。`, 'success')
-    agent.status = 'success'
+// 从 store 状态推导智能体状态列表
+const agents = computed(() =>
+  agentDefs.map((def) => {
+    const statusFromStore = factoryStore.agentsStatus[def.id]
+    const status = (statusFromStore || 'idle') as 'idle' | 'running' | 'success' | 'error'
+    return {
+      ...def,
+      status,
+    }
   })
+)
 
-  await Promise.all(taskPromises)
+const isGenerating = computed(() => factoryStore.isGenerating)
+const currentTopic = computed(() => factoryStore.currentTopic)
+const logs = computed(() => factoryStore.logs)
 
-  // --- Step 3: Reviewer 审核 ---
-  agents[6].status = 'running'
-  addLog('Reviewer', `正在检查幻觉并校准难度...`, 'info')
-  await new Promise(r => setTimeout(r, 1500))
-  addLog('Reviewer', `全量资源审核通过。`, 'success')
-  agents[6].status = 'success'
-
-  isGenerating.value = false
+// 启动生成流水线
+const runWorkflow = async (topic: string) => {
+  selectedAgent.value = null
+  await factoryStore.startGeneration(topic)
 }
 
-// 3. 点击智能体卡片进入详情
+// 点击智能体卡片进入详情
 const handleAgentClick = (agent: any) => {
   if (agent.status === 'success') {
     selectedAgent.value = agent

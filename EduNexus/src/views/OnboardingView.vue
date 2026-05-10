@@ -2,17 +2,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { 
-  Check, ChevronRight, Sparkles, Send, 
-  BrainCircuit, Target, Clock, Cpu, User, Bot, 
+import {
+  Check, ChevronRight, Sparkles, Send,
+  BrainCircuit, Target, Clock, Cpu, User, Bot,
   Paperclip, X, RotateCcw, Save, Plus, MessageSquareQuote
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { submitOnboarding } from '@/api/profile'
+import { useAuthStore } from '@/stores/authStore'
 
 const router = useRouter()
+const authStore = useAuthStore()
 
 // 消息模型
 interface Message {
@@ -46,6 +49,8 @@ const tempSelections = ref<string[]>([])
 const isTyping = ref(false)
 const isAnalyzing = ref(false)
 const isReviewing = ref(false)
+const isSubmitting = ref(false)
+const submitError = ref('')
 const scrollAnchor = ref<HTMLElement | null>(null)
 const newTagInputs = ref<Record<string, string>>({})
 
@@ -128,6 +133,30 @@ const addTag = (dim: keyof ProfileData) => {
 
 const removeTag = (dim: keyof ProfileData, idx: number) => {
   (profileData.value[dim] as string[]).splice(idx, 1)
+}
+
+const handleEnterSystem = async () => {
+  if (isSubmitting.value) return
+  isSubmitting.value = true
+  submitError.value = ''
+  try {
+    const onboardingPayload = {
+      responses: {
+        knowledge_base: profileData.value.knowledge,
+        cognitive_style: profileData.value.style,
+        learning_goals: profileData.value.goals,
+        time_distribution: profileData.value.time,
+        notes: profileData.value.notes,
+      },
+    }
+    await submitOnboarding(onboardingPayload)
+    authStore.setOnboardingCompleted()
+    router.push('/')
+  } catch (e: any) {
+    submitError.value = e?.response?.data?.detail || '画像提交失败，请重试'
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
 onMounted(() => {
@@ -313,8 +342,8 @@ const progressPercent = computed(() => ((currentStepIndex.value + 1) / dimension
                   class="h-14 px-8 rounded-xl text-slate-500 hover:text-white transition-all text-sm">
             <RotateCcw class="w-4 h-4 mr-2" /> 重新开始
           </Button>
-          <Button @click="router.push('/')" class="h-14 px-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-base shadow-xl shadow-blue-600/20 active:scale-95 transition-all">
-            这就是我的学习基因，进入系统 <Save class="ml-2 w-5 h-5" />
+          <Button @click="handleEnterSystem" :disabled="isSubmitting" class="h-14 px-12 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold text-base shadow-xl shadow-blue-600/20 active:scale-95 transition-all disabled:opacity-50">
+            {{ isSubmitting ? '正在保存...' : '这就是我的学习基因，进入系统' }} <Save class="ml-2 w-5 h-5" />
           </Button>
         </div>
       </div>

@@ -1,30 +1,48 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { 
-  BrainCircuit, Sparkles, Zap, Activity, 
-  ChevronRight, Play, FileText, Code2, 
-  Map, Lightbulb, CheckCircle2, AlertCircle 
+import { computed, onMounted } from 'vue'
+import {
+  BrainCircuit, Sparkles, Zap, Activity,
+  ChevronRight, FileText,
+  CheckCircle2, AlertCircle
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { useAuthStore } from '@/stores/authStore'
+import { useProfileStore } from '@/stores/profileStore'
+import { useDeliveryStore } from '@/stores/deliveryStore'
 
-// 模拟多智能体工厂状态
-const agentResources = [
-  { name: '教授 (Professor)', task: '讲解文档', status: 'Completed', icon: FileText, color: 'text-blue-500' },
-  { name: '架构师 (Architect)', task: '思维导图', status: 'Generating', icon: Map, color: 'text-emerald-500' },
-  { name: '考官 (Examiner)', task: '自适应测验', status: 'Pending', icon: CheckCircle2, color: 'text-amber-500' },
-  { name: '导演 (Director)', task: '多模态分镜', status: 'Completed', icon: Play, color: 'text-purple-500' },
-  { name: '极客 (Hacker)', task: '实操案例', status: 'Generating', icon: Code2, color: 'text-pink-500' },
-]
+const authStore = useAuthStore()
+const profileStore = useProfileStore()
+const deliveryStore = useDeliveryStore()
 
-// 模拟动态画像 6 维度
-const profileDimensions = [
-  { label: '知识基础', value: 85 },
-  { label: '认知风格', value: '视觉型', isTag: true },
-  { label: '易错偏好', value: '逻辑边界', isTag: true },
-  { label: '学习目标', value: '项目实战', isTag: true },
-  { label: '专注时长', value: '45min' },
-  { label: '抗压值', value: 72 },
-]
+const userName = computed(() => authStore.user?.username || '同学')
+
+const profileDimensions = computed(() => {
+  const p = profileStore.profileData
+  if (!p) return [
+    { label: '知识基础', value: '--' },
+    { label: '认知风格', value: '--', isTag: true },
+    { label: '易错偏好', value: '--', isTag: true },
+    { label: '学习目标', value: '--', isTag: true },
+    { label: '专注时长', value: '--' },
+    { label: '抗压值', value: '--' },
+  ]
+  return [
+    { label: '知识基础', value: p.knowledge_base_score },
+    { label: '认知风格', value: p.cognitive_style, isTag: true },
+    { label: '易错偏好', value: p.error_preference, isTag: true },
+    { label: '学习目标', value: p.learning_goals, isTag: true },
+    { label: '专注时长', value: `${p.focus_duration}min` },
+    { label: '抗压值', value: p.stress_resistance },
+  ]
+})
+
+const stressValue = computed(() => profileStore.profileData?.stress_resistance ?? 72)
+const focusDuration = computed(() => profileStore.profileData?.focus_duration ?? 45)
+
+onMounted(() => {
+  profileStore.fetchProfile()
+  deliveryStore.fetchAll()
+})
 </script>
 
 <template>
@@ -37,7 +55,7 @@ const profileDimensions = [
           <span class="text-xs font-bold uppercase tracking-[0.2em]">Ice-breaker Agent Feedback</span>
         </div>
         <h1 class="text-4xl font-bold text-white tracking-tight">
-          你好, 同学 <span class="text-zinc-500 text-2xl font-normal">/ 准备好开始今天的“梯度下降”探索了吗？</span>
+          你好, {{ userName }} <span class="text-zinc-500 text-2xl font-normal">/ 准备好开始今天的学习了吗？</span>
         </h1>
       </div>
       <!-- 快速状态指标 -->
@@ -46,14 +64,14 @@ const profileDimensions = [
           <Activity class="w-4 h-4 text-orange-500" />
           <div>
             <p class="text-[10px] text-zinc-500 uppercase tracking-wider">当前抗压值</p>
-            <p class="text-sm font-bold text-white">72% (稳定)</p>
+            <p class="text-sm font-bold text-white">{{ stressValue }}% (稳定)</p>
           </div>
         </div>
         <div class="bg-[#131314] border border-[#303134] px-4 py-2 rounded-2xl flex items-center gap-3">
           <Zap class="w-4 h-4 text-yellow-500" />
           <div>
-            <p class="text-[10px] text-zinc-500 uppercase tracking-wider">专注度等级</p>
-            <p class="text-sm font-bold text-white">High (A)</p>
+            <p class="text-[10px] text-zinc-500 uppercase tracking-wider">专注时长</p>
+            <p class="text-sm font-bold text-white">{{ focusDuration }}min</p>
           </div>
         </div>
       </div>
@@ -70,7 +88,7 @@ const profileDimensions = [
               <BrainCircuit class="w-5 h-5 text-blue-500" />
               动态规划路径：人工智能导论
             </h3>
-            <p class="text-zinc-500 text-sm mt-1">Planner Agent 已根据你的“线代基础”自动插入补充节点</p>
+            <p class="text-zinc-500 text-sm mt-1">Planner Agent 已根据你的"线代基础"自动插入补充节点</p>
           </div>
           <Button variant="outline" class="rounded-xl border-[#303134] bg-transparent text-xs">查看全量图谱</Button>
         </div>
@@ -126,23 +144,30 @@ const profileDimensions = [
         </h3>
         
         <div class="space-y-4 flex-1">
-          <div v-for="agent in agentResources" :key="agent.name" 
+          <div v-if="deliveryStore.todayResources.length === 0"
+            class="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
+            <FileText class="w-8 h-8 text-zinc-700" />
+            <p>暂无生成资源</p>
+            <p class="text-[10px]">前往"资源生成"页面创建内容</p>
+          </div>
+          <div v-for="(item, idx) in deliveryStore.todayResources.slice(0, 5)" :key="idx"
             class="flex items-center justify-between p-4 rounded-2xl bg-[#0b0b0b]/50 border border-[#303134] hover:border-zinc-700 transition-all cursor-pointer">
             <div class="flex items-center gap-4">
-              <div :class="`p-2 rounded-lg bg-zinc-900 ${agent.color}`">
-                <component :is="agent.icon" class="w-5 h-5" />
+              <div :class="`p-2 rounded-lg bg-zinc-900 text-blue-500`">
+                <component :is="FileText" class="w-5 h-5" />
               </div>
               <div>
-                <p class="text-sm font-bold text-zinc-200">{{ agent.name }}</p>
-                <p class="text-[10px] text-zinc-500">{{ agent.task }}</p>
+                <p class="text-sm font-bold text-zinc-200 line-clamp-1 max-w-[180px]">{{ item.title }}</p>
+                <p class="text-[10px] text-zinc-500">{{ item.resource_type }}</p>
               </div>
             </div>
             <div class="flex flex-col items-end">
-              <span v-if="agent.status === 'Completed'" class="text-[10px] text-emerald-500 font-bold uppercase tracking-tighter italic">Ready</span>
-              <span v-else class="flex items-center gap-1">
+              <span v-if="item.status === 'completed'" class="text-[10px] text-emerald-500 font-bold uppercase tracking-tighter italic">Ready</span>
+              <span v-else-if="item.status === 'current'" class="flex items-center gap-1">
                 <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
-                <span class="text-[10px] text-zinc-600 font-bold uppercase">Work...</span>
+                <span class="text-[10px] text-zinc-600 font-bold uppercase">Active</span>
               </span>
+              <span v-else class="text-[10px] text-zinc-600 font-bold uppercase">Locked</span>
             </div>
           </div>
         </div>
@@ -172,7 +197,7 @@ const profileDimensions = [
         <div class="flex-1">
           <h3 class="text-xl font-bold text-white mb-2 underline decoration-blue-500 decoration-4 underline-offset-4">Assessor Agent 诊断</h3>
           <p class="text-zinc-400 text-sm leading-relaxed mb-6">
-            本周你对线性代数的掌握程度提升了 <span class="text-emerald-500 font-bold">15%</span>，但在代码实操部分的“梯度爆炸”问题上停留超过 45 分钟。建议开启 <span class="text-blue-400">Tutor Agent</span> 专项答疑。
+            本周你对线性代数的掌握程度提升了 <span class="text-emerald-500 font-bold">15%</span>，但在代码实操部分的"梯度爆炸"问题上停留超过 45 分钟。建议开启 <span class="text-blue-400">Tutor Agent</span> 专项答疑。
           </p>
           <div class="flex gap-4">
             <Button size="sm" class="rounded-lg bg-blue-600">生成周报 PDF</Button>

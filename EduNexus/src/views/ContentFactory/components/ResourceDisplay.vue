@@ -1,7 +1,6 @@
 <!-- src/views/ContentFactory/components/ResourceDisplay.vue -->
 <script setup lang="ts">
-import { ref } from 'vue'
-import { 
+import {
   FileText, 
   GitFork, 
   ClipboardCheck, 
@@ -49,7 +48,7 @@ const mockQuizzes = [
       <div class="p-4 rounded-full bg-white/5 mb-4">
         <FileText class="h-10 w-10 opacity-20" />
       </div>
-      <p class="text-sm">在上方输入主题并点击“协作生成”</p>
+      <p class="text-sm">在上方输入主题并点击"协作生成"</p>
       <p class="text-[11px] mt-2 opacity-50">AI 专家团将为您构建多模态学习包</p>
     </div>
 
@@ -63,7 +62,7 @@ const mockQuizzes = [
         </div>
       </div>
       <h3 class="text-xl font-medium text-white mb-2">资源构建中...</h3>
-      <p class="text-slate-400 text-sm italic">“{{ topic }}”的知识体系正在由专家团协同建模</p>
+      <p class="text-slate-400 text-sm italic">"{{ topic }}"的知识体系正在由专家团协同建模</p>
     </div>
 
     <!-- 内容展示区 -->
@@ -161,7 +160,7 @@ const mockQuizzes = [
                 </p>
                 <p class="text-xs text-orange-400 mb-1">旁白脚本：</p>
                 <p class="text-[13px] text-slate-300 italic">
-                  “想象你在迷雾笼罩的山顶，只能通过脚下的坡度来判断方向...”
+                  "想象你在迷雾笼罩的山顶，只能通过脚下的坡度来判断方向..."
                 </p>
               </CardContent>
             </Card>

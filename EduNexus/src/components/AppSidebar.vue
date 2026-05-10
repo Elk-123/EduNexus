@@ -1,22 +1,24 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { 
-  Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu, 
-  SidebarMenuItem, SidebarMenuButton, SidebarGroup 
+import {
+  Sidebar, SidebarContent, SidebarHeader, SidebarFooter, SidebarMenu,
+  SidebarMenuItem, SidebarMenuButton, SidebarGroup
 } from '@/components/ui/sidebar'
-import { 
-  Popover, PopoverContent, PopoverTrigger 
+import {
+  Popover, PopoverContent, PopoverTrigger
 } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { 
-  LayoutDashboard, Factory, Route, Send, MessageSquareQuote, 
-  BarChart3, Settings, GraduationCap, Camera, LogOut, Check, Pencil 
+import {
+  LayoutDashboard, Factory, Route, Send, MessageSquareQuote,
+  BarChart3, Settings, GraduationCap, Camera, LogOut, Check, Pencil
 } from 'lucide-vue-next'
+import { useAuthStore } from '@/stores/authStore'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const menuItems = [
   { title: '控制台首页', icon: LayoutDashboard, path: '/' },
@@ -27,18 +29,20 @@ const menuItems = [
   { title: '学习效果评估', icon: BarChart3, path: '/assessment' },
 ]
 
-// Profile 状态管理
-const username = ref('JD / Meng Archi')
-const email = ref('meng.archi6829@gmail.com')
-const isEditing = ref(false) // 强制默认为 false
+const username = computed(() => authStore.user?.username || '用户')
+const email = computed(() => authStore.user?.email || '')
+const initials = computed(() => {
+  const name = username.value
+  return name.slice(0, 2).toUpperCase()
+})
+const isEditing = ref(false)
 
-// 切换编辑状态
 const toggleEdit = () => {
   isEditing.value = !isEditing.value
 }
 
-// 退出登录
 const handleLogout = () => {
+  authStore.logout()
   router.push('/login')
 }
 </script>
@@ -104,7 +108,7 @@ const handleLogout = () => {
         <PopoverTrigger as-child>
           <div class="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-[#1e1f20] transition-all cursor-pointer group outline-none">
             <div class="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex-shrink-0 flex items-center justify-center text-[10px] font-bold text-white shadow-lg transition-all group-hover:ring-2 ring-blue-500/20">
-              JD
+              {{ initials }}
             </div>
             <div class="flex flex-col truncate">
               <!-- 列表处的邮箱也稍微加亮一点 -->
@@ -127,7 +131,7 @@ const handleLogout = () => {
           <div class="p-6 flex flex-col items-center border-b border-[#3c4043]">
             <div class="relative group cursor-pointer mb-3">
               <div class="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-2xl font-bold text-white shadow-xl">
-                JD
+                {{ initials }}
               </div>
               <div class="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <Camera class="w-5 h-5 text-white" />
