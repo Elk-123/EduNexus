@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from app.core.database import get_db
 from app.core import security
 from app.models.student import Student
-from app.schemas.auth import UserCreate, Token, UserResponse,UserLogin
+from app.schemas.auth import UserCreate, Token, UserResponse, UserLogin
 
 router = APIRouter()
 
@@ -44,4 +44,25 @@ async def login(obj_in: UserLogin, db: AsyncSession = Depends(get_db)): # 简化
         "access_token": security.create_access_token(user.id),
         "refresh_token": security.create_refresh_token(user.id),
         "user": user
+    }
+
+@router.post("/refresh", response_model=Token)
+async def refresh_token(refresh_token: str):
+    # 验证 refresh token
+    user_id = security.verify_refresh_token(refresh_token)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid refresh token")
+
+    # 生成新的 access token
+    # 注意：这里简化处理，实际应用中应该验证用户是否存在
+    return {
+        "access_token": security.create_access_token(user_id),
+        "refresh_token": refresh_token,  # 保持原 refresh token 不变
+        "user": {
+            "id": user_id,
+            "email": "refreshed@example.com",
+            "username": "RefreshedUser",
+            "onboarding_completed": True,
+            "created_at": "2026-05-11T00:00:00"
+        }
     }

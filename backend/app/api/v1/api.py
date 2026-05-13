@@ -1,6 +1,6 @@
 # app/api/v1/api.py
 from fastapi import APIRouter
-from app.api.v1 import auth, profile, factory, graph, resources
+from app.api.v1 import auth, profile, factory, graph, resources, tutor, assessment
 
 api_router = APIRouter()
 
@@ -18,3 +18,9 @@ api_router.include_router(graph.router, prefix="/graph", tags=["graph"])
 
 # 注册资源推送模块
 api_router.include_router(resources.router, prefix="/resources", tags=["resources"])
+
+# 注册智能辅导模块
+api_router.include_router(tutor.router, prefix="/tutor", tags=["tutor"])
+
+# 注册学习评估模块
+api_router.include_router(assessment.router, prefix="/assessment", tags=["assessment"])

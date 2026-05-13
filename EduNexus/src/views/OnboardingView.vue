@@ -13,9 +13,11 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { submitOnboarding } from '@/api/profile'
 import { useAuthStore } from '@/stores/authStore'
+import { useProfileStore } from '@/stores/profileStore'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const profileStore = useProfileStore()
 
 // 消息模型
 interface Message {
@@ -149,7 +151,8 @@ const handleEnterSystem = async () => {
         notes: profileData.value.notes,
       },
     }
-    await submitOnboarding(onboardingPayload)
+    const result = await submitOnboarding(onboardingPayload)
+    profileStore.setProfile(result.profile_data, result.version)
     authStore.setOnboardingCompleted()
     router.push('/')
   } catch (e: any) {

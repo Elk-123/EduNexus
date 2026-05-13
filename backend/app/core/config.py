@@ -10,7 +10,16 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    
+
+    # 环境配置
+    ENVIRONMENT: str = "development"  # development, production, testing
+
+    # CORS 配置
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
+    CORS_ALLOW_CREDENTIALS: bool = True
+    CORS_ALLOW_METHODS: str = "*"
+    CORS_ALLOW_HEADERS: str = "*"
+
     POSTGRES_SERVER: str = "localhost"
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "edunexus_password"
@@ -20,6 +29,16 @@ class Settings(BaseSettings):
 
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
+
+    @property
+    def is_production(self) -> bool:
+        """判断是否为生产环境"""
+        return self.ENVIRONMENT.lower() == "production"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """将 CORS_ORIGINS 字符串转换为列表"""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod

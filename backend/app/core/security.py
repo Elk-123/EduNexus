@@ -18,6 +18,16 @@ def create_refresh_token(subject: Union[str, Any]) -> str:
     to_encode = {"exp": expire, "sub": str(subject), "type": "refresh"}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
+def verify_refresh_token(token: str) -> Union[str, None]:
+    """验证 refresh token 并返回用户 ID"""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        return payload.get("sub")
+    except jwt.JWTError:
+        return None
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证明文密码与哈希值是否匹配"""
     try:

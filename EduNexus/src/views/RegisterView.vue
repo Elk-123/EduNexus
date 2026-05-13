@@ -60,9 +60,7 @@ const handleRegister = async () => {
     })
 
     // 3. 注册成功逻辑：存储 Token 并跳转
-    localStorage.setItem('token', data.access_token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    authStore.setAuth(data.access_token, data.user)
+    authStore.setAuth(data.access_token, data.user, data.refresh_token)
 
     // 注册后默认进入破冰流程
     router.push('/onboarding')

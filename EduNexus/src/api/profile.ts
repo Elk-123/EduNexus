@@ -10,3 +10,8 @@ export async function getMyProfile(): Promise<ProfileResponse> {
   const { data } = await apiClient.get<ProfileResponse>('/profile/me')
   return data
 }
+
+export async function updateMyProfile(payload: OnboardingSubmission): Promise<ProfileResponse> {
+  const { data } = await apiClient.put<ProfileResponse>('/profile/me', payload)
+  return data
+}

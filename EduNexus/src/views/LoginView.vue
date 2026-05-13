@@ -40,9 +40,7 @@ const handleLogin = async () => {
     })
 
     // 2. 持久化存储认证信息
-    localStorage.setItem('token', data.access_token)
-    localStorage.setItem('user', JSON.stringify(data.user))
-    authStore.setAuth(data.access_token, data.user)
+    authStore.setAuth(data.access_token, data.user, data.refresh_token)
 
     // 3. 逻辑跳转：已完成画像去首页，未完成去破冰
     if (data.user.onboarding_completed) {

@@ -6,7 +6,8 @@
       "Bash(npx vue-tsc *)",
       "Bash(npx vite *)",
       "Bash(curl -s http://localhost:5173/login)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(taskkill //F //IM uvicorn.exe)"
     ]
   }
 }

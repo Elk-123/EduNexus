@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { ProfileDimensions } from '@/types/profile'
-import { getMyProfile } from '@/api/profile'
+import type { ProfileDimensions, OnboardingSubmission } from '@/types/profile'
+import { getMyProfile, updateMyProfile } from '@/api/profile'
 
 export const useProfileStore = defineStore('profile', () => {
   const profileData = ref<ProfileDimensions | null>(null)
@@ -28,5 +28,19 @@ export const useProfileStore = defineStore('profile', () => {
     version.value = ver
   }
 
-  return { profileData, version, isLoading, hasProfile, fetchProfile, setProfile }
+  async function updateProfile(payload: OnboardingSubmission) {
+    isLoading.value = true
+    try {
+      const res = await updateMyProfile(payload)
+      profileData.value = res.profile_data
+      version.value = res.version
+      return true
+    } catch {
+      return false
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  return { profileData, version, isLoading, hasProfile, fetchProfile, setProfile, updateProfile }
 })

@@ -52,6 +52,44 @@ async def submit_onboarding(
     return db_profile
 
 
+@router.put("/me", response_model=ProfileResponse)
+async def update_my_profile(
+    payload: OnboardingSubmission,
+    db: AsyncSession = Depends(deps.get_db),
+    current_user=Depends(deps.get_current_user),
+):
+    """更新当前登录学生的画像数据"""
+    # 1. 查找现有画像记录
+    result = await db.execute(
+        select(StudentProfile).where(StudentProfile.student_id == current_user.id)
+    )
+    db_profile = result.scalars().first()
+
+    if not db_profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="尚未创建个人画像，请先完成破冰流程。",
+        )
+
+    # 2. 调用 AI 分析引擎（可选）
+    try:
+        structured_profile: ProfileDimensions = await analyzer.analyze_onboarding_data(payload)
+        db_profile.profile_data = structured_profile.model_dump()
+    except Exception:
+        # 如果 AI 分析失败，保留原有画像数据，只更新原始响应
+        pass
+
+    # 3. 更新原始响应和版本
+    db_profile.raw_responses = payload.responses
+    db_profile.version += 1
+
+    # 4. 提交更改
+    await db.commit()
+    await db.refresh(db_profile)
+
+    return db_profile
+
+
 @router.get("/me", response_model=ProfileResponse)
 async def get_my_profile(
     db: AsyncSession = Depends(deps.get_db),

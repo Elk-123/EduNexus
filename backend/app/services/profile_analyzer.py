@@ -1,6 +1,5 @@
 import json
 from google import genai
-from google.genai import types
 from app.schemas.profile import OnboardingSubmission, ProfileDimensions
 from app.core.config import settings
 
@@ -36,10 +35,10 @@ class ProfileAnalyzer:
             if self.client is None:
                 raise RuntimeError("Gemini API not configured")
 
-            response = await self.client.aio.models.generate_content(
+            response = await self.client.aio.generate_content(
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
-                config=types.GenerateContentConfig(
+                generation_config=genai.GenerationConfig(
                     response_mime_type="application/json",
                 ),
             )
