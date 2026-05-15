@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import SQLAlchemyError
-import google.generativeai as genai
+from google.genai import types
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -85,7 +85,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
                 "timestamp": datetime.now().isoformat()
             }
         )
-    elif isinstance(exc, genai.GenerativeAIError):
+    elif isinstance(exc, Exception):  # AI related errors are now caught as general exceptions
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             content={

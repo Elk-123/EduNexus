@@ -1,6 +1,5 @@
 import json
-from google import genai
-from google.genai import types
+from google.genai import Client
 from app.schemas.profile import ProfileDimensions
 from app.core.config import settings
 
@@ -11,7 +10,7 @@ class ContentGenerator:
     def __init__(self):
         api_key = settings.GOOGLE_API_KEY
         if api_key:
-            self.client = genai.Client(api_key=api_key)
+            self.client = Client(api_key=api_key)
         else:
             self.client = None
 
@@ -19,12 +18,10 @@ class ContentGenerator:
         if self.client is None:
             return None
         try:
-            response = await self.client.aio.models.generate_content(
+            response = await self.client.models.generate_content(
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                ),
+                config={"response_mime_type": "application/json"},
             )
             return json.loads(response.text)
         except Exception:

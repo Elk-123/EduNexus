@@ -1,5 +1,9 @@
+import os
+import certifi
+
+os.environ['SSL_CERT_FILE'] = certifi.where()
 import json
-from google import genai
+from google.genai import Client
 from app.schemas.profile import OnboardingSubmission, ProfileDimensions
 from app.core.config import settings
 
@@ -8,7 +12,7 @@ class ProfileAnalyzer:
     def __init__(self):
         api_key = settings.GOOGLE_API_KEY
         if api_key:
-            self.client = genai.Client(api_key=api_key)
+            self.client = Client(api_key=api_key)
         else:
             self.client = None
 
@@ -35,12 +39,10 @@ class ProfileAnalyzer:
             if self.client is None:
                 raise RuntimeError("Gemini API not configured")
 
-            response = await self.client.aio.generate_content(
+            response = await self.client.models.generate_content(
                 model=settings.GEMINI_MODEL,
                 contents=prompt,
-                generation_config=genai.GenerationConfig(
-                    response_mime_type="application/json",
-                ),
+                generation_config={"response_mime_type": "application/json"},
             )
             result_dict = json.loads(response.text)
             return ProfileDimensions(**result_dict)
