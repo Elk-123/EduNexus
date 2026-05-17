@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>最终修复验证</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+    }
+    #debug {
+      background: #1e1e1e;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    .success {
+      color: #4ade80;
+    }
+    .error {
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+  <h1>最终修复验证测试</h1>
+  <button onclick="testWithMockData()">使用模拟数据测试</button>
+  <button onclick="testWithBackendData()">模拟后端数据测试</button>
+  <div id="debug"></div>
+  <div id="chart"></div>
+
+  <script>
+    // 初始化 mermaid
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      themeVariables: {
+        background: 'transparent',
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#3b82f6',
+        lineColor: '#4b5563'
+      }
+    });
+
+    // 模拟的后端数据
+    const mockBackendData = {
+      root: "root((Transformer 注意力机制))",
+      children: [
+        {
+          name: "核心概念",
+          children: [
+            { name: 'Q - Query (查询): 当前要匹配的信息' },
+            { name: 'K - Key (键): 用于被匹配的信息' },
+            { name: 'V - Value (值): 最终提取的信息内容' },
+            { name: '相似度度量: 计算 Q 与 K 的匹配程度' }
+          ]
+        },
+        {
+          name: "数学计算流程",
+          children: [
+            { name: 'Scaled Dot-Product Attention' },
+            { name: '点积 (Dot Product): Q 乘以 K 的转置' },
+            { name: '缩放 (Scaling): 除以 sqrt(dk) 防止梯度消失' },
+            { name: '掩码 (Masking): 屏蔽未来信息 (Decoder)' },
+            { name: '归一化 (Softmax): 转化为概率分布' },
+            { name: '加权求和: 用概率对 V 进行加权综合' }
+          ]
+        }
+      ]
+    };
+
+    // 生成 mermaid 定义 - 修复版本
+    const generateMermaidDefinition = (mindmap) => {
+      console.log('Generating mindmap definition for:', mindmap);
+
+      // 确保数据结构正确
+      if (!mindmap || !mindmap.root) {
+        throw new Error('Invalid mindmap structure: missing root');
+      }
+
+      // 1. 处理根节点 (确保它是 root((内容)) 格式)
+      let rootNode = mindmap.root;
+      // 如果后端传来的 root 只是纯文字，包装它；如果是 root((...))，保持原样
+      if (!rootNode.includes('((')) {
+        rootNode = `root((${rootNode}))`;
+      }
+
+      console.log('Processed root node:', rootNode);
+
+      let lines = ['mindmap', rootNode];
+
+      // 递归处理节点
+      const processNode = (nodes, level) => {
+        const indent = '  '.repeat(level);
+
+        nodes.forEach((node, index) => {
+          if (!node.name) return;
+
+          // 【关键修复】：清洗节点名
+          // 1. 将双引号转义或替换为单引号
+          // 2. 移除节点名中可能存在的方括号 [ ]，防止解析错误
+          let safeName = node.name
+            .replace(/"/g, "'")    // 双引转单引
+            .replace(/\[/g, "")    // 移除左中括号
+            .replace(/\]/g, "");   // 移除右中括号
+
+          console.log(`Processing node at level ${level}: "${node.name}" -> "${safeName}"`);
+
+          // 3. 统一使用 ["内容"] 包裹，这是 Mermaid 处理特殊字符最安全的方式
+          lines.push(`${indent}["${safeName}"]`);
+
+          if (node.children && Array.isArray(node.children)) {
+            processNode(node.children, level + 1);
+          }
+        });
+      };
+
+      if (mindmap.children) {
+        processNode(mindmap.children, 1);
+      }
+
+      const definition = lines.join('\n') + '\n';
+
+      console.log('Final generated definition:', definition);
+      return definition;
+    };
+
+    function updateDebug(message) {
+      const debugDiv = document.getElementById('debug');
+      debugDiv.textContent += message + '\n';
+    }
+
+    function testWithMockData() {
+      const chartDiv = document.getElementById('chart');
+      debugDiv = document.getElementById('debug');
+
+      debugDiv.textContent = '=== 测试开始 ===\n';
+      chartDiv.innerHTML = '<p>正在加载...</p>';
+
+      try {
+        const definition = generateMermaidDefinition(mockBackendData);
+        updateDebug('生成的定义:\n' + definition + '\n');
+
+        const svgId = 'test-' + Date.now();
+        updateDebug('SVG ID: ' + svgId + '\n');
+
+        mermaid.render(svgId, definition)
+          .then(result => {
+            updateDebug('渲染成功!\n');
+            updateDebug('返回值类型: ' + typeof result + '\n');
+            updateDebug('返回值内容: ' + JSON.stringify(result).substring(0, 200) + '...\n');
+
+            let svgContent = '';
+            if (typeof result === 'object' && 'svg' in result) {
+              svgContent = result.svg;
+              updateDebug('从 result.svg 获取内容\n');
+            } else if (typeof result === 'string') {
+              svgContent = result;
+              updateDebug('直接使用字符串内容\n');
+            } else {
+              throw new Error('意外的返回值类型: ' + typeof result);
+            }
+
+            updateDebug('SVG 内容类型: ' + typeof svgContent + '\n');
+            updateDebug('SVG 内容长度: ' + svgContent.length + '\n');
+
+            // 设置容器内容
+            chartDiv.innerHTML = svgContent;
+
+            // 验证
+            const svgElement = chartDiv.querySelector('svg');
+            updateDebug('\n验证结果:\n');
+            updateDebug('SVG元素存在: ' + !!svgElement + '\n');
+            updateDebug('容器内容类型: ' + typeof chartDiv.innerHTML + '\n');
+            updateDebug('容器内容长度: ' + chartDiv.innerHTML.length + '\n');
+
+            if (svgElement) {
+              updateDebug('SVG元素内容长度: ' + svgElement.innerHTML.length + '\n');
+              updateDebug('✅ 测试成功!\n');
+            } else {
+              updateDebug('❌ SVG元素未找到!\n');
+            }
+          })
+          .catch(error => {
+            updateDebug('❌ 渲染失败: ' + error.message + '\n');
+            chartDiv.innerHTML = '<p class="error">错误: ' + error.message + '</p>';
+          });
+      } catch (error) {
+        updateDebug('❌ 处理失败: ' + error.message + '\n');
+        chartDiv.innerHTML = '<p class="error">错误: ' + error.message + '</p>';
+      }
+    }
+
+    function testWithBackendData() {
+      // 模拟有问题的后端数据
+      const problematicData = {
+        root: "root((Transformer 注意力机制))",
+        children: [
+          {
+            name: "问题测试",
+            children: [
+              { name: '复杂度: ["O(n² · d) n为序列长度"]' },  // 这个有嵌套引号
+              { name: '特殊字符: [测试] (括号)' }  // 这个有特殊符号
+            ]
+          }
+        ]
+      };
+
+      updateDebug('\n=== 测试问题数据 ===\n');
+      testWithMockData(); // 先显示正常结果
+      setTimeout(() => {
+        testWithMockData(); // 再次测试确保一致性
+      }, 1000);
+    }
+  </script>
+</body>
+</html>

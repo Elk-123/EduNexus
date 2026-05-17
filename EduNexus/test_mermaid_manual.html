@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手动 Mermaid 测试</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>手动 Mermaid 测试</h1>
+  <button onclick="renderManualChart()">渲染手动定义的思维导图</button>
+  <div id="chart"></div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+    });
+
+    function renderManualChart() {
+      const chartElement = document.getElementById('chart');
+
+      // 尝试使用最简单的格式
+      const definition = `mindmap
+  ((Root))
+    核心概念
+      Q - Query
+      K - Key
+      V - Value
+    数学计算
+      点积
+      缩放
+      Softmax`;
+
+      console.log('Manual definition:', definition);
+
+      const svgId = 'manual-chart-' + Date.now();
+
+      mermaid.render(svgId, definition)
+        .then(result => {
+          console.log('Render result:', result);
+          chartElement.innerHTML = result;
+
+          // 添加自定义样式
+          const style = document.createElement('style');
+          style.textContent = `
+            .mermaid svg {
+              background: transparent !important;
+              width: 100% !important;
+              height: auto !important;
+            }
+            .mermaid .node {
+              filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)) !important;
+            }
+            .mermaid text {
+              fill: #e2e8f0 !important;
+              font-family: Inter, sans-serif !important;
+            }
+          `;
+          chartElement.appendChild(style);
+          console.log('Manual chart rendered successfully');
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          chartElement.innerHTML = '<p class="error">错误: ' + error.message + '</p>';
+        });
+    }
+  </script>
+</body>
+</html>

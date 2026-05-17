@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>简单 mindmap 调试</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+    }
+    #debug {
+      background: #1e1e1e;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>简单 mindmap 调试</h1>
+  <button onclick="testSimple()">测试简单 mindmap</button>
+  <div id="debug"></div>
+  <div id="chart"></div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+    });
+
+    function testSimple() {
+      const debugDiv = document.getElementById('debug');
+      const chartDiv = document.getElementById('chart');
+
+      // 最简单的 mindmap 结构
+      const simpleMindmap = {
+        root: '((Root Node))',
+        children: [
+          {
+            name: 'Child 1',
+            children: [
+              { name: 'Subchild 1.1' },
+              { name: 'Subchild 1.2' }
+            ]
+          },
+          {
+            name: 'Child 2',
+            children: [
+              { name: 'Subchild 2.1' },
+              { name: 'Subchild 2.2' }
+            ]
+          }
+        ]
+      };
+
+      const definition = generateMermaidDefinition(simpleMindmap);
+      debugDiv.textContent = definition;
+
+      mermaid.render('test-chart', definition)
+        .then(result => {
+          chartDiv.innerHTML = result;
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          chartDiv.innerHTML = '<p class="error">错误: ' + error.message + '</p>';
+        });
+    }
+
+    function generateMermaidDefinition(mindmap) {
+      const root = mindmap.root;
+      const children = mindmap.children || [];
+
+      let definition = `mindmap\n  root${root}\n`;
+
+      children.forEach((child) => {
+        const childName = child.name.includes(' ') ? `"${child.name}"` : child.name;
+        definition += `    ${childName}\n`;
+
+        if (child.children) {
+          child.children.forEach((sub) => {
+            const subName = sub.name.includes(' ') ? `"${sub.name}"` : sub.name;
+            definition += `      ${subName}\n`;
+          });
+        }
+      });
+
+      return definition;
+    }
+  </script>
+</body>
+</html>

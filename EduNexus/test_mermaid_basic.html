@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>基础 Mermaid 测试</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h1>基础 Mermaid 测试</h1>
+  <button onclick="testBasic()">测试基础语法</button>
+  <button onclick="testWithRoot()">测试带 root 的语法</button>
+  <button onclick="testChinese()">测试中文</button>
+  <div id="chart"></div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+    });
+
+    function testBasic() {
+      const chartElement = document.getElementById('chart');
+      const definition = `mindmap
+  A
+    B
+      C
+      D
+    E
+      F`;
+
+      renderChart(definition, 'basic-chart');
+    }
+
+    function testWithRoot() {
+      const chartElement = document.getElementById('chart');
+      const definition = `mindmap
+  ((Root))
+    A
+      B
+      C
+    D
+      E`;
+
+      renderChart(definition, 'root-chart');
+    }
+
+    function testChinese() {
+      const chartElement = document.getElementById('chart');
+      const definition = `mindmap
+  ((根节点))
+    核心概念
+      "Q - Query"
+      "K - Key"
+    数学计算
+      "点积"
+      "Softmax"`;
+
+      renderChart(definition, 'chinese-chart');
+    }
+
+    function renderChart(definition, id) {
+      console.log('Rendering:', definition);
+
+      mermaid.render(id, definition)
+        .then(result => {
+          console.log('Render result:', result);
+          const chartElement = document.getElementById('chart');
+          chartElement.innerHTML = result;
+
+          // 添加自定义样式
+          const style = document.createElement('style');
+          style.textContent = `
+            .mermaid svg {
+              background: transparent !important;
+              width: 100% !important;
+              height: auto !important;
+            }
+            .mermaid text {
+              fill: #e2e8f0 !important;
+              font-family: Inter, sans-serif !important;
+            }
+          `;
+          chartElement.appendChild(style);
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          const chartElement = document.getElementById('chart');
+          chartElement.innerHTML = `<p class="error">错误: ${error.message}</p>`;
+        });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>调试资源数据</title>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    .resource-card {
+      background-color: #141414;
+      border: 1px solid #303134;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .resource-title {
+      color: #60a5fa;
+      font-size: 18px;
+      margin-bottom: 15px;
+    }
+    .data-json {
+      background-color: #1e1e1e;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 15px;
+      overflow-x: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+      font-size: 12px;
+    }
+    .success {
+      color: #10b981;
+    }
+    .error {
+      color: #ef4444;
+    }
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin: 10px 0;
+    }
+    button:hover {
+      background-color: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>EduNexus 资源数据调试</h1>
+
+  <button onclick="testAPI()">测试API连接</button>
+  <button onclick="loadMockData()">加载Mock数据</button>
+
+  <div id="result" class="resource-card">
+    <div class="resource-title">结果：</div>
+    <div id="resultContent" class="data-json">点击按钮测试...</div>
+  </div>
+
+  <div id="professorData" class="resource-card" style="display: none;">
+    <div class="resource-title">教授文档数据：</div>
+    <div id="professorContent" class="data-json"></div>
+  </div>
+
+  <div id="architectData" class="resource-card" style="display: none;">
+    <div class="resource-title">思维导图数据：</div>
+    <div id="architectContent" class="data-json"></div>
+  </div>
+
+  <div id="examinerData" class="resource-card" style="display: none;">
+    <div class="resource-title">考官数据：</div>
+    <div id="examinerContent" class="data-json"></div>
+  </div>
+
+  <div id="directorData" class="resource-card" style="display: none;">
+    <div class="resource-title">导演数据：</div>
+    <div id="directorContent" class="data-json"></div>
+  </div>
+
+  <div id="hackerData" class="resource-card" style="display: none;">
+    <div class="resource-title">黑客数据：</div>
+    <div id="hackerContent" class="data-json"></div>
+  </div>
+
+  <script>
+    let authToken = '';
+
+    async function testAPI() {
+      try {
+        // 测试健康检查
+        const healthResponse = await fetch('http://localhost:8001/health');
+        const healthData = await healthResponse.json();
+
+        let result = '✅ 后端服务正常\n';
+        result += `状态: ${healthData.status}\n\n`;
+
+        // 测试登录
+        const loginResponse = await fetch('http://localhost:8001/api/v1/auth/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: 'test@edunexus.com',
+            password: '123456'
+          })
+        });
+
+        if (loginResponse.ok) {
+          const loginData = await loginResponse.json();
+          authToken = loginData.access_token;
+          result += '✅ 登录成功\n';
+          result += `用户: ${loginData.user.username}\n`;
+          result += `Token: ${authToken.substring(0, 30)}...\n\n`;
+        } else {
+          result += '❌ 登录失败\n';
+        }
+
+        document.getElementById('resultContent').innerHTML = `<pre class="success">${result}</pre>`;
+      } catch (error) {
+        document.getElementById('resultContent').innerHTML = `<pre class="error">❌ 连接失败: ${error.message}</pre>`;
+      }
+    }
+
+    async function loadMockData() {
+      if (!authToken) {
+        alert('请先测试API连接！');
+        return;
+      }
+
+      try {
+        const response = await fetch('http://localhost:8001/api/v1/factory/resources/f1358352-9f7b-4aec-8d58-fe4d127cb477', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('获取资源失败');
+        }
+
+        const resources = await response.json();
+        console.log('获取到的资源数据:', resources);
+
+        // 显示所有资源数据
+        let result = `✅ 成功加载 ${resources.length} 个资源\n\n`;
+
+        // 统计各个类型的资源
+        const resourceTypes = resources.reduce((acc, r) => {
+          acc[r.agent_type] = (acc[r.agent_type] || 0) + 1;
+          return acc;
+        }, {});
+
+        result += '资源类型统计:\n';
+        Object.entries(resourceTypes).forEach(([type, count]) => {
+          result += `- ${type}: ${count} 个\n`;
+        });
+
+        document.getElementById('resultContent').innerHTML = `<pre class="success">${result}</pre>`;
+
+        // 分别显示各个资源
+        resources.forEach(resource => {
+          switch (resource.agent_type) {
+            case 'professor':
+              displayProfessorResource(resource);
+              break;
+            case 'architect':
+              displayArchitectResource(resource);
+              break;
+            case 'examiner':
+              displayExaminerResource(resource);
+              break;
+            case 'director':
+              displayDirectorResource(resource);
+              break;
+            case 'hacker':
+              displayHackerResource(resource);
+              break;
+          }
+        });
+
+      } catch (error) {
+        document.getElementById('resultContent').innerHTML = `<pre class="error">❌ 加载失败: ${error.message}</pre>`;
+      }
+    }
+
+    function displayProfessorResource(resource) {
+      document.getElementById('professorData').style.display = 'block';
+      document.getElementById('professorContent').textContent = JSON.stringify(resource, null, 2);
+    }
+
+    function displayArchitectResource(resource) {
+      document.getElementById('architectData').style.display = 'block';
+      document.getElementById('architectContent').textContent = JSON.stringify(resource, null, 2);
+    }
+
+    function displayExaminerResource(resource) {
+      document.getElementById('examinerData').style.display = 'block';
+      document.getElementById('examinerContent').textContent = JSON.stringify(resource, null, 2);
+    }
+
+    function displayDirectorResource(resource) {
+      document.getElementById('directorData').style.display = 'block';
+      document.getElementById('directorContent').textContent = JSON.stringify(resource, null, 2);
+    }
+
+    function displayHackerResource(resource) {
+      document.getElementById('hackerData').style.display = 'block';
+      document.getElementById('hackerContent').textContent = JSON.stringify(resource, null, 2);
+    }
+  </script>
+</body>
+</html>

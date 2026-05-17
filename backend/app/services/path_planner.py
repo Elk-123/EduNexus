@@ -88,27 +88,137 @@ class PathPlanner:
             return self._get_fallback(goal, profile)
 
     def _get_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
-        if isinstance(profile, dict):
-            has_weakness = profile and profile.get('knowledge_base_score', 50) < 60
+        # 根据目标判断是否为人工智能学习路径
+        goal_lower = goal.lower()
+        ai_keywords = [
+            "人工智能", "机器学习", "深度学习",
+            "transformer", "llm", "large language", "neural network",
+            "machine learning", "deep learning", "reinforcement learning",
+            "nlp", "computer vision", "cv", "generative ai"
+        ]
+        is_ai_path = any(keyword in goal_lower for keyword in ai_keywords)
+
+        if is_ai_path:
+            return self._get_ai_path_fallback(goal, profile)
         else:
-            has_weakness = profile and profile.knowledge_base_score < 60
+            return self._get_general_path_fallback(goal, profile)
+
+    def _get_ai_path_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
+        """人工智能学习路径的fallback - 三个阶段设计"""
         nodes = [
-            {"id": "n1", "label": f"{goal}前置基础", "type": "standard", "proficiency": 0.85, "status": "completed"},
-            {"id": "n1b", "label": "数学基础强化 (AI注入)", "type": "injected", "proficiency": 0.45, "status": "active"},
+            # 第一阶段：基础储备
+            {"id": "ai-math", "label": "数学基础", "type": "standard", "proficiency": 0.8, "status": "completed"},
+            {"id": "ai-prog", "label": "编程开发", "type": "standard", "proficiency": 0.8, "status": "completed"},
+            {"id": "ai-la", "label": "线性代数", "type": "standard", "proficiency": 0.7, "status": "active"},
+            {"id": "ai-calc", "label": "微积分", "type": "standard", "proficiency": 0.7, "status": "active"},
+            {"id": "ai-stat", "label": "概率统计", "type": "standard", "proficiency": 0.7, "status": "active"},
+            {"id": "ai-python", "label": "Python核心语法", "type": "standard", "proficiency": 0.8, "status": "active"},
+            {"id": "ai-libs", "label": "数据处理库", "type": "standard", "proficiency": 0.6, "status": "pending"},
+            {"id": "ai-stage1", "label": "第一阶段：基础储备完成", "type": "milestone", "proficiency": 1.0, "status": "pending"},
+
+            # 第二阶段：核心模型
+            {"id": "ai-ml", "label": "经典机器学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-sup", "label": "监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-unsup", "label": "无监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-dl", "label": "深度学习基础", "type": "standard", "proficiency": 0.3, "status": "pending"},
+            {"id": "ai-frame", "label": "深度学习框架", "type": "standard", "proficiency": 0.3, "status": "pending"},
+            {"id": "ai-cv", "label": "计算机视觉", "type": "standard", "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-nlp", "label": "自然语言处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-audio", "label": "语音信号处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-stage2", "label": "第二阶段：核心模型掌握", "type": "milestone", "proficiency": 1.0, "status": "pending"},
+
+            # 第三阶段：前沿进阶
+            {"id": "ai-transformer", "label": "Transformer架构", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-llm", "label": "大语言模型原理", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-app", "label": "应用开发层", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-tech", "label": "模型调优层", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-ops", "label": "工程部署层", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-rag", "label": "RAG检索增强", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-agent", "label": "AI智能体", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-ft", "label": "LoRA/PEFT微调", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-rlhf", "label": "强化学习对齐", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-quant", "label": "模型量化/加速", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-mlops", "label": "MLOps运维部署", "type": "standard", "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-finish", "label": "人工智能专家路径达成", "type": "milestone", "proficiency": 1.0, "status": "pending"},
+        ]
+
+        edges = [
+            # 第一阶段内部连接
+            {"from": "ai-math", "to": "ai-la", "isDynamic": False},
+            {"from": "ai-math", "to": "ai-calc", "isDynamic": False},
+            {"from": "ai-math", "to": "ai-stat", "isDynamic": False},
+            {"from": "ai-prog", "to": "ai-python", "isDynamic": False},
+            {"from": "ai-python", "to": "ai-libs", "isDynamic": False},
+            {"from": "ai-la", "to": "ai-stage1", "isDynamic": False},
+            {"from": "ai-calc", "to": "ai-stage1", "isDynamic": False},
+            {"from": "ai-stat", "to": "ai-stage1", "isDynamic": False},
+            {"from": "ai-libs", "to": "ai-stage1", "isDynamic": False},
+
+            # 第一阶段到第二阶段
+            {"from": "ai-stage1", "to": "ai-ml", "isDynamic": False},
+
+            # 第二阶段内部连接
+            {"from": "ai-ml", "to": "ai-sup", "isDynamic": False},
+            {"from": "ai-ml", "to": "ai-unsup", "isDynamic": False},
+            {"from": "ai-sup", "to": "ai-dl", "isDynamic": False},
+            {"from": "ai-unsup", "to": "ai-dl", "isDynamic": False},
+            {"from": "ai-dl", "to": "ai-frame", "isDynamic": False},
+            {"from": "ai-frame", "to": "ai-cv", "isDynamic": False},
+            {"from": "ai-frame", "to": "ai-nlp", "isDynamic": False},
+            {"from": "ai-frame", "to": "ai-audio", "isDynamic": False},
+            {"from": "ai-cv", "to": "ai-stage2", "isDynamic": False},
+            {"from": "ai-nlp", "to": "ai-stage2", "isDynamic": False},
+            {"from": "ai-audio", "to": "ai-stage2", "isDynamic": False},
+
+            # 第二阶段到第三阶段
+            {"from": "ai-stage2", "to": "ai-transformer", "isDynamic": False},
+
+            # 第三阶段内部连接
+            {"from": "ai-transformer", "to": "ai-llm", "isDynamic": False},
+            {"from": "ai-llm", "to": "ai-app", "isDynamic": False},
+            {"from": "ai-llm", "to": "ai-tech", "isDynamic": False},
+            {"from": "ai-llm", "to": "ai-ops", "isDynamic": False},
+            {"from": "ai-app", "to": "ai-rag", "isDynamic": False},
+            {"from": "ai-app", "to": "ai-agent", "isDynamic": False},
+            {"from": "ai-tech", "to": "ai-ft", "isDynamic": False},
+            {"from": "ai-tech", "to": "ai-rlhf", "isDynamic": False},
+            {"from": "ai-ops", "to": "ai-quant", "isDynamic": False},
+            {"from": "ai-ops", "to": "ai-mlops", "isDynamic": False},
+            {"from": "ai-rag", "to": "ai-finish", "isDynamic": False},
+            {"from": "ai-agent", "to": "ai-finish", "isDynamic": False},
+            {"from": "ai-ft", "to": "ai-finish", "isDynamic": False},
+            {"from": "ai-rlhf", "to": "ai-finish", "isDynamic": False},
+            {"from": "ai-quant", "to": "ai-finish", "isDynamic": False},
+            {"from": "ai-mlops", "to": "ai-finish", "isDynamic": False},
+        ]
+
+        return {
+            "title": f"人工智能学习路径 - {goal}",
+            "analysis_summary": "按照三大阶段设计：基础储备→核心模型→前沿进阶。数学编程打基础，机器学习学核心，大模型进前沿。",
+            "nodes": nodes,
+            "edges": edges,
+        }
+
+    def _get_general_path_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
+        """通用学习路径的fallback"""
+        has_weakness = False
+        if profile:
+            if isinstance(profile, dict):
+                has_weakness = profile.get('knowledge_base_score', 50) < 60
+            else:
+                has_weakness = profile.knowledge_base_score < 60
+
+        nodes = [
+            {"id": "n1", "label": f"{goal}基础概念", "type": "standard", "proficiency": 0.8, "status": "completed"},
             {"id": "n2", "label": f"{goal}核心原理", "type": "standard", "proficiency": 0.6, "status": "active"},
             {"id": "n3", "label": f"{goal}进阶应用", "type": "standard", "proficiency": 0.3, "status": "pending"},
             {"id": "n4", "label": f"{goal}实战项目", "type": "standard", "proficiency": 0.0, "status": "pending"},
         ]
         edges = [
-            {"from": "n1", "to": "n1b", "isDynamic": True},
             {"from": "n1", "to": "n2", "isDynamic": False},
-            {"from": "n1b", "to": "n2", "isDynamic": True},
             {"from": "n2", "to": "n3", "isDynamic": False},
             {"from": "n3", "to": "n4", "isDynamic": False},
         ]
-        if not has_weakness:
-            nodes = [n for n in nodes if n["type"] != "injected"]
-            edges = [e for e in edges if not e.get("isDynamic")]
 
         return {
             "title": f"{goal} 学习路径",

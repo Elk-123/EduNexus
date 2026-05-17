@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>前端调试 - 资源生成</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .api-section {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .error {
+            color: #ff6b6b;
+        }
+        .success {
+            color: #51cf66;
+        }
+        .input-group {
+            margin: 10px 0;
+        }
+        .input-group label {
+            display: inline-block;
+            width: 100px;
+        }
+        .input-group input {
+            padding: 8px;
+            border-radius: 5px;
+            border: 1px solid #555;
+            background-color: #333;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>前端调试 - 资源生成测试</h1>
+
+        <div class="api-section">
+            <h2>1. 设置API基础URL</h2>
+            <div class="input-group">
+                <label>API URL:</label>
+                <input type="text" id="api-base-url" value="http://localhost:8001/api/v1" style="width: 400px;">
+            </div>
+            <button class="button" onclick="setApiBaseUrl()">设置</button>
+            <div id="api-url-status" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>2. 登录</h2>
+            <div class="input-group">
+                <label>邮箱:</label>
+                <input type="text" id="email" value="test@edunexus.com" style="width: 200px;">
+            </div>
+            <div class="input-group">
+                <label>密码:</label>
+                <input type="password" id="password" value="123456" style="width: 200px;">
+            </div>
+            <button class="button" onclick="login()">登录</button>
+            <div id="login-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>3. 创建生成任务</h2>
+            <div class="input-group">
+                <label>主题:</label>
+                <input type="text" id="topic" value="Transformer 架构中的注意机制" style="width: 400px;">
+            </div>
+            <button class="button" onclick="createTask()">创建任务</button>
+            <div id="create-task-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>4. 获取最新任务</h2>
+            <button class="button" onclick="getLatestTask()">获取最新任务</button>
+            <div id="latest-task-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>5. 获取任务资源</h2>
+            <div class="input-group">
+                <label>任务ID:</label>
+                <input type="text" id="task-id" placeholder="输入任务ID" style="width: 400px;">
+            </div>
+            <button class="button" onclick="getTaskResources()">获取资源</button>
+            <div id="resources-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>6. 模拟资源数据展示</h2>
+            <button class="button" onclick="mockResourceDisplay()">模拟展示</button>
+            <div id="mock-display" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let apiBaseUrl = 'http://localhost:8001/api/v1';
+        let authToken = localStorage.getItem('authToken') || '';
+
+        // 设置API基础URL
+        function setApiBaseUrl() {
+            const input = document.getElementById('api-base-url').value;
+            if (input) {
+                apiBaseUrl = input;
+                document.getElementById('api-url-status').innerHTML = `<span class="success">API URL已设置为: ${apiBaseUrl}</span>`;
+            }
+        }
+
+        // 通用请求函数
+        async function request(url, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            const defaultOptions = {
+                headers
+            };
+
+            const finalOptions = { ...defaultOptions, ...options };
+
+            try {
+                const response = await fetch(url, finalOptions);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || `HTTP ${response.status}`);
+                }
+
+                return data;
+            } catch (error) {
+                throw error;
+            }
+        }
+
+        // 登录
+        async function login() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const data = await request(`${apiBaseUrl}/auth/login`, {
+                    method: 'POST',
+                    body: JSON.stringify({ email, password })
+                });
+
+                authToken = data.access_token;
+                localStorage.setItem('authToken', authToken);
+                document.getElementById('login-response').innerHTML = `<span class="success">登录成功！Token已保存</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('login-response').innerHTML = `<span class="error">登录失败: ${error.message}</span>`;
+            }
+        }
+
+        // 创建任务
+        async function createTask() {
+            const topic = document.getElementById('topic').value;
+
+            try {
+                const data = await request(`${apiBaseUrl}/factory/generate`, {
+                    method: 'POST',
+                    body: JSON.stringify({ topic })
+                });
+
+                document.getElementById('create-task-response').innerHTML = `<span class="success">任务创建成功！</span>\n${JSON.stringify(data, null, 2)}`;
+                // 自动填充任务ID
+                document.getElementById('task-id').value = data.task_id;
+            } catch (error) {
+                document.getElementById('create-task-response').innerHTML = `<span class="error">创建失败: ${error.message}</span>`;
+            }
+        }
+
+        // 获取最新任务
+        async function getLatestTask() {
+            try {
+                const data = await request(`${apiBaseUrl}/factory/latest`);
+                document.getElementById('latest-task-response').innerHTML = `<span class="success">任务获取成功！</span>\n${JSON.stringify(data, null, 2)}`;
+                // 自动填充任务ID
+                document.getElementById('task-id').value = data.id;
+            } catch (error) {
+                document.getElementById('latest-task-response').innerHTML = `<span class="error">获取失败: ${error.message}</span>`;
+            }
+        }
+
+        // 获取任务资源
+        async function getTaskResources() {
+            const taskId = document.getElementById('task-id').value;
+
+            if (!taskId) {
+                document.getElementById('resources-response').innerHTML = `<span class="error">请输入任务ID</span>`;
+                return;
+            }
+
+            try {
+                const data = await request(`${apiBaseUrl}/factory/resources/${taskId}`);
+                document.getElementById('resources-response').innerHTML = `<span class="success">资源获取成功！共 ${data.length} 个</span>\n${JSON.stringify(data, null, 2)}`;
+            } catch (error) {
+                document.getElementById('resources-response').innerHTML = `<span class="error">获取失败: ${error.message}</span>`;
+            }
+        }
+
+        // 模拟资源展示
+        function mockResourceDisplay() {
+            const mockResources = [
+                {
+                    id: "1",
+                    task_id: "5b501c4c-754b-4bd1-b7ba-5cd9c2ec143a",
+                    agent_type: "professor",
+                    resource_type: "document",
+                    content: {
+                        title: "深入理解：Transformer 架构中的注意机制",
+                        sections: [
+                            {
+                                heading: "注意机制的起源与动机",
+                                body: "在2017年提出的Transformer架构中，注意机制是革命性的创新。它解决了RNN序列建模的局限性，允许模型直接关注序列中任意位置的信息。"
+                            },
+                            {
+                                heading: "Scaled Dot-Product 注意力",
+                                body: "Transformer使用Scaled Dot-Product注意力，它通过计算Query、Key和Value之间的点积来获得注意力权重。"
+                            }
+                        ]
+                    },
+                    status: "completed"
+                },
+                {
+                    id: "2",
+                    task_id: "5b501c4c-754b-4bd1-b7ba-5cd9c2ec143a",
+                    agent_type: "architect",
+                    resource_type: "mindmap",
+                    content: {
+                        mindmap: {
+                            root: "Transformer 注意机制",
+                            children: [
+                                {
+                                    name: "理论基础",
+                                    children: [
+                                        { name: "注意力分数" },
+                                        { name: "Query-Key-Value" }
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    status: "completed"
+                }
+            ];
+
+            let html = '<h3>模拟资源数据展示</h3>';
+            html += '<div>';
+
+            // 教授文档
+            const professorResource = mockResources.find(r => r.agent_type === 'professor');
+            if (professorResource) {
+                html += '<div style="margin-bottom: 20px;">';
+                html += '<h4 style="color: #4CAF50;">✅ 教授文档</h4>';
+                html += `<p><strong>标题:</strong> ${professorResource.content.title}</p>`;
+                html += '<div><strong>章节:</strong></div>';
+                professorResource.content.sections.forEach(section => {
+                    html += `<div style="margin-left: 20px;">`;
+                    html += `<p><strong>${section.heading}:</strong></p>`;
+                    html += `<p style="color: #ccc;">${section.body}</p>`;
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            // 思维导图
+            const architectResource = mockResources.find(r => r.agent_type === 'architect');
+            if (architectResource) {
+                html += '<div>';
+                html += '<h4 style="color: #2196F3;">✅ 思维导图</h4>';
+                html += `<p><strong>中心主题:</strong> ${architectResource.content.mindmap.root}</p>`;
+                html += '<div><strong>分支:</strong></div>';
+                architectResource.content.mindmap.children.forEach(branch => {
+                    html += `<div style="margin-left: 20px;">`;
+                    html += `<p><strong>${branch.name}:</strong></p>`;
+                    branch.children.forEach(sub => {
+                        html += `<div style="margin-left: 20px; color: #ccc;">- ${sub.name}</div>`;
+                    });
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+
+            html += '</div>';
+            document.getElementById('mock-display').innerHTML = html;
+        }
+    </script>
+</body>
+</html>

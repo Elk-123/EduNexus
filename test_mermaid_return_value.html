@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测试 Mermaid 返回值问题</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+    }
+    #debug {
+      background: #1e1e1e;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <h1>测试 Mermaid 返回值问题</h1>
+  <button onclick="testRender()">测试 mermaid.render 返回值</button>
+  <div id="debug"></div>
+  <div id="chart"></div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+    });
+
+    function testRender() {
+      const debugDiv = document.getElementById('debug');
+      const chartDiv = document.getElementById('chart');
+
+      // 清空容器
+      chartDiv.innerHTML = '<p>正在测试...</p>';
+
+      const definition = `mindmap
+  root((Transformer))
+    ["核心概念"]
+      ["Q - Query"]
+      ["K - Key"]
+      ["V - Value"]
+    ["数学计算"]
+      ["点积"]
+      ["Softmax"]`;
+
+      const svgId = 'test-chart-' + Date.now();
+
+      console.log('开始渲染...');
+
+      mermaid.render(svgId, definition)
+        .then(result => {
+          console.log('渲染完成!');
+          console.log('Result type:', typeof result);
+          console.log('Result:', result);
+          console.log('Result keys:', Object.keys(result));
+
+          // 处理不同的返回值类型
+          let svgContent = '';
+          if (typeof result === 'object' && result.svg) {
+            // 新版本 mermaid 返回对象 { svg: string }
+            svgContent = result.svg;
+            console.log('从对象获取 SVG:', typeof svgContent);
+          } else if (typeof result === 'string') {
+            // 旧版本 mermaid 返回字符串
+            svgContent = result;
+            console.log('直接使用字符串 SVG:', typeof svgContent);
+          } else {
+            throw new Error(`意外的返回值类型: ${typeof result}`);
+          }
+
+          console.log('最终 SVG 类型:', typeof svgContent);
+          console.log('SVG 内容长度:', svgContent.length);
+
+          // 显示调试信息
+          debugDiv.textContent = '=== 渲染结果 ===\n' +
+            '类型: ' + typeof result + '\n' +
+            '包含 svg 属性: ' + (result && result.svg ? '是' : '否') + '\n' +
+            '最终内容类型: ' + typeof svgContent + '\n' +
+            '最终内容长度: ' + svgContent.length + '\n\n' +
+            '内容预览 (前200字符):\n' + svgContent.substring(0, 200);
+
+          // 尝试添加到容器
+          chartDiv.innerHTML = svgContent;
+
+          // 检查是否真的添加了内容
+          console.log('chartDiv children 数量:', chartDiv.children.length);
+          console.log('chartDiv 内容类型:', typeof chartDiv.innerHTML);
+          console.log('chartDiv 内容长度:', chartDiv.innerHTML.length);
+        })
+        .catch(error => {
+          console.error('渲染失败:', error);
+          chartDiv.innerHTML = `<p style="color: red;">错误: ${error.message}</p>`;
+          debugDiv.textContent = '=== 错误信息 ===\n' + error.message;
+        });
+    }
+  </script>
+</body>
+</html>

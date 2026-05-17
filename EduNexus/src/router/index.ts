@@ -67,7 +67,7 @@ const router = createRouter({
 })
 
 // 全局前置守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, _from, next) => {
   // 白名单路径不需要认证
   const publicPaths = ['/login', '/register']
   const isPublicPath = publicPaths.includes(to.path)

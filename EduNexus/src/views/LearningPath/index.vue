@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import {
   Network,
   Sparkles,
@@ -9,7 +9,6 @@ import {
   X,
   Search,
   CheckCircle2,
-  Lock,
   PlayCircle
 } from 'lucide-vue-next'
 import KnowledgeGraph from './components/KnowledgeGraph.vue'
@@ -24,14 +23,30 @@ const showAnalysis = ref(true)
 
 const isPlanning = computed(() => learningStore.isPlanning)
 const phases = computed(() => learningStore.phases)
-const activePhaseId = computed(() => learningStore.activePhaseId)
+const activePhaseId = ref<string>('')
+
+const activePhaseIdComputed = computed(() => learningStore.activePhaseId)
 const currentGraphNodes = computed(() => learningStore.currentGraphNodes)
+const currentPhaseName = computed(() => {
+  const phase = learningStore.phases.find(p => p.id === learningStore.activePhaseId)
+  return phase?.title || ''
+})
 const analysisSummary = computed(() => learningStore.analysisSummary)
+// 过滤 edges，只保留两端都在当前阶段的边
+const currentGraphEdges = computed(() => {
+  const phase = learningStore.phases.find(p => p.id === learningStore.activePhaseId)
+  if (!phase) return []
+
+  const nodeIds = new Set(phase.nodes.map(n => n.id))
+  return learningStore.edges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to))
+})
 
 const handlePlan = () => {
   if (!customGoal.value) return
   showAnalysis.value = true
   learningStore.plan(customGoal.value)
+  console.log("Nodes count:", learningStore.nodes.length)
+  console.log("Phases count:", learningStore.phases.length)
 }
 
 const closeAnalysis = () => {
@@ -39,6 +54,7 @@ const closeAnalysis = () => {
 }
 
 const selectPhase = (phaseId: string) => {
+  activePhaseId.value = phaseId
   learningStore.selectPhase(phaseId)
 }
 
@@ -49,6 +65,14 @@ const hasInjectedNodes = (nodes: KnowledgeNode[]) => {
 onMounted(() => {
   handlePlan()
 })
+
+// 监听phases变化，默认选中第一个阶段
+watch(phases, (newPhases: any[]) => {
+  if (newPhases.length > 0 && !activePhaseId.value) {
+    activePhaseId.value = newPhases[0].id
+    learningStore.selectPhase(newPhases[0].id)
+  }
+}, { immediate: true })
 </script>
 
 <template>
@@ -91,37 +115,8 @@ onMounted(() => {
     </header>
 
     <main class="flex-1 flex overflow-hidden">
-      <!-- 左侧：局部知识图谱 (SVG Graph) -->
+      <!-- 左侧：知识图谱 (SVG Graph) -->
       <section class="flex-1 relative border-r border-white/5 bg-dot-pattern overflow-hidden">
-        <!-- AI 诊断浮窗 (可关闭) -->
-        <transition name="fade-slide">
-          <div v-if="showAnalysis" class="absolute top-6 left-6 z-20">
-            <div class="group relative bg-[#0f0f0f]/90 border border-blue-500/40 backdrop-blur-xl w-80 p-4 rounded-2xl shadow-2xl">
-              <button 
-                @click="closeAnalysis"
-                class="absolute top-2 right-2 p-1 rounded-full hover:bg-white/10 transition-colors"
-              >
-                <X class="h-3 w-3 text-slate-500" />
-              </button>
-              
-              <div class="flex items-start gap-3">
-                <div class="p-2 bg-blue-500/10 rounded-lg">
-                  <Info class="h-4 w-4 text-blue-400" />
-                </div>
-                <div>
-                  <div class="flex items-center gap-2">
-                    <span class="text-xs font-bold text-blue-400">画像分析报告</span>
-                    <span class="text-[9px] bg-blue-500/20 px-1 rounded text-blue-300 uppercase">Analysis</span>
-                  </div>
-                  <p class="text-[11px] text-slate-300 mt-2 leading-relaxed">
-                    {{ analysisSummary }}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </transition>
-
         <!-- 加载遮罩 -->
         <div v-if="isPlanning" class="absolute inset-0 z-10 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center">
           <div class="relative">
@@ -134,18 +129,10 @@ onMounted(() => {
         <!-- 图谱组件 -->
         <KnowledgeGraph
           :nodes="currentGraphNodes"
-          :active-id="activePhaseId"
+          :edges="currentGraphEdges"
+          :active-id="activePhaseIdComputed"
+          :phase-name="currentPhaseName"
         />
-        
-        <!-- 图例 -->
-        <div class="absolute bottom-6 left-6 flex items-center gap-6 bg-black/40 px-4 py-2 rounded-full border border-white/5 backdrop-blur-md">
-          <div class="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-            <div class="w-2 h-2 rounded-full bg-blue-500"></div> 基础路径
-          </div>
-          <div class="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-            <div class="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.4)]"></div> AI 建议强化
-          </div>
-        </div>
       </section>
 
       <!-- 右侧：全流程大阶段展示 (Roadmap) -->
@@ -170,15 +157,14 @@ onMounted(() => {
             @click="selectPhase(phase.id)"
             :class="[
               'group relative p-4 rounded-2xl border transition-all cursor-pointer overflow-hidden',
-              activePhaseId === phase.id ? 'bg-blue-600/10 border-blue-500/40 ring-1 ring-blue-500/20' : 'bg-[#141414] border-white/5 hover:border-white/20',
-              phase.status === 'locked' ? 'opacity-40 grayscale pointer-events-none' : ''
+              activePhaseId === phase.id ? 'bg-blue-600/10 border-blue-500/40 ring-1 ring-blue-500/20' : 'bg-[#141414] border-white/5 hover:border-white/20'
             ]"
           >
             <!-- 状态图标 -->
             <div class="absolute top-4 right-4">
                <CheckCircle2 v-if="phase.status === 'completed'" class="h-4 w-4 text-green-500" />
                <PlayCircle v-else-if="phase.status === 'current'" class="h-4 w-4 text-blue-400 animate-pulse" />
-               <Lock v-else class="h-4 w-4 text-slate-600" />
+               <div v-else class="h-4 w-4 rounded-full border-2 border-slate-600" />
             </div>
 
             <div class="flex items-center gap-3 mb-2">

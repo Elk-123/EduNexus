@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>思维导图修复验证</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .success {
+      color: #4ade80;
+      font-weight: bold;
+    }
+    .error {
+      color: #f87171;
+    }
+  </style>
+</head>
+<body>
+  <h1>思维导图修复验证</h1>
+  <p>点击按钮测试是否修复了 "[object Object]" 问题</p>
+  <button onclick="testFixedRendering()">测试修复后的渲染</button>
+
+  <div id="chart">
+    <p class="text-slate-500">点击按钮测试</p>
+  </div>
+
+  <script>
+    // 初始化 mermaid
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      themeVariables: {
+        background: 'transparent',
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#3b82f6',
+        lineColor: '#4b5563'
+      }
+    });
+
+    function testFixedRendering() {
+      const container = document.getElementById('chart');
+      container.innerHTML = '<p>正在渲染...</p>';
+
+      // 模拟有问题的后端数据
+      const problematicData = {
+        root: "root((Transformer 注意力机制))",
+        children: [
+          {
+            name: "核心概念",
+            children: [
+              { name: 'Q - Query (查询): 当前要匹配的信息' },
+              { name: 'K - Key (键): 用于被匹配的信息' },
+              { name: 'V - Value (值): 最终提取的信息内容' },
+              { name: '相似度度量: 计算 Q 与 K 的匹配程度' }
+            ]
+          },
+          {
+            name: "数学计算流程",
+            children: [
+              { name: 'Scaled Dot-Product Attention' },
+              { name: '点积 (Dot Product): Q 乘以 K 的转置' },
+              { name: '缩放 (Scaling): 除以 sqrt(dk) 防止梯度消失' },
+              { name: '掩码 (Masking): 屏蔽未来信息 (Decoder)' },
+              { name: '归一化 (Softmax): 转化为概率分布' },
+              { name: '加权求和: 用概率对 V 进行加权综合' }
+            ]
+          }
+        ]
+      };
+
+      // 修复后的生成函数
+      const generateMermaidDefinition = (mindmap) => {
+        if (!mindmap || !mindmap.root) {
+          throw new Error('Invalid mindmap structure: missing root');
+        }
+
+        let rootNode = mindmap.root;
+        if (!rootNode.includes('((')) {
+          rootNode = `root((${rootNode}))`;
+        }
+
+        let lines = ['mindmap', rootNode];
+
+        const processNode = (nodes, level) => {
+          const indent = '  '.repeat(level);
+          nodes.forEach((node) => {
+            if (!node.name) return;
+
+            let safeName = node.name
+              .replace(/"/g, "'")
+              .replace(/\[/g, "")
+              .replace(/\]/g, "");
+
+            lines.push(`${indent}["${safeName}"]`);
+
+            if (node.children && Array.isArray(node.children)) {
+              processNode(node.children, level + 1);
+            }
+          });
+        };
+
+        if (mindmap.children) {
+          processNode(mindmap.children, 1);
+        }
+
+        return lines.join('\n') + '\n';
+      };
+
+      try {
+        const definition = generateMermaidDefinition(problematicData);
+        const svgId = 'verify-' + Date.now();
+
+        mermaid.render(svgId, definition)
+          .then(result => {
+            let svgContent = '';
+
+            if (typeof result === 'object' && result.svg) {
+              svgContent = result.svg;
+            } else if (typeof result === 'string') {
+              svgContent = result;
+            } else {
+              throw new Error(`意外的返回值类型: ${typeof result}`);
+            }
+
+            if (svgContent && svgContent.length > 0) {
+              container.innerHTML = svgContent;
+
+              // 验证是否成功
+              const svgElement = container.querySelector('svg');
+              if (svgElement) {
+                console.log('✅ 修复成功！思维导图正常显示');
+                container.innerHTML = `
+                  <div style="text-align: center;">
+                    <p class="success">✅ 修复成功！</p>
+                    <p>思维导图已正常渲染，不再是 [object Object]</p>
+                    <div style="margin-top: 20px;">${svgContent}</div>
+                  </div>
+                `;
+              } else {
+                throw new Error('SVG元素未找到');
+              }
+            } else {
+              throw new Error('SVG内容为空');
+            }
+          })
+          .catch(error => {
+            console.error('渲染失败:', error);
+            container.innerHTML = `<p class="error">❌ 渲染失败: ${error.message}</p>`;
+          });
+      } catch (error) {
+        console.error('处理失败:', error);
+        container.innerHTML = `<p class="error">❌ 处理失败: ${error.message}</p>`;
+      }
+    }
+  </script>
+</body>
+</html>

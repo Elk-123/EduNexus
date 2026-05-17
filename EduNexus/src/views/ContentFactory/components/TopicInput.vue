@@ -3,9 +3,11 @@
 import { ref } from 'vue'
 import { Send, Loader2, Sparkles } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { useFactoryStore } from '@/stores/factoryStore'
 
 const props = defineProps<{ isGenerating: boolean }>()
 const emit = defineEmits(['start'])
+const factoryStore = useFactoryStore()
 const topic = ref('')
 
 const handleSubmit = () => {
@@ -15,6 +17,17 @@ const handleSubmit = () => {
 }
 
 const suggestions = ['梯度下降算法的几何解释', 'Transformer 架构中的注意机制', 'React Fiber 架构原理']
+
+// 测试加载已有任务数据
+const testLoadTask = async () => {
+  try {
+    const taskId = 'c687a9ef-b561-4db4-922a-f3d9a7851a57' // 已知的任务ID
+    await factoryStore.loadTaskData(taskId)
+    console.log('Task loaded successfully')
+  } catch (error) {
+    console.error('Failed to load task:', error)
+  }
+}
 </script>
 
 <template>
@@ -45,8 +58,8 @@ const suggestions = ['梯度下降算法的几何解释', 'Transformer 架构中
     
     <!-- 快捷建议 -->
     <div class="mt-4 flex gap-2 justify-center overflow-x-auto no-scrollbar">
-      <button 
-        v-for="s in suggestions" 
+      <button
+        v-for="s in suggestions"
         :key="s"
         @click="topic = s"
         class="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] text-slate-400 hover:bg-white/10 hover:text-white transition-colors whitespace-nowrap"

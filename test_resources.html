@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>测试资源API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .api-section {
+            background-color: #2a2a2a;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            background-color: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .error {
+            color: #ff6b6b;
+        }
+        .success {
+            color: #51cf66;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>测试资源API</h1>
+
+        <div class="api-section">
+            <h2>1. 获取最新任务</h2>
+            <button class="button" onclick="getLatestTask()">获取最新任务</button>
+            <div id="latest-task-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>2. 获取任务资源</h2>
+            <input type="text" id="task-id-input" placeholder="输入任务ID" style="width: 300px; padding: 8px;">
+            <button class="button" onclick="getTaskResources()">获取资源</button>
+            <div id="resources-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>3. 创建新任务</h2>
+            <input type="text" id="topic-input" placeholder="输入主题" style="width: 300px; padding: 8px;" value="Transformer 架构中的注意机制">
+            <button class="button" onclick="createTask()">创建任务</button>
+            <div id="create-task-response" class="response"></div>
+        </div>
+
+        <div class="api-section">
+            <h2>4. 登录</h2>
+            <input type="text" id="email-input" placeholder="邮箱" value="test@edunexus.com" style="width: 200px; padding: 8px;">
+            <input type="password" id="password-input" placeholder="密码" value="123456" style="width: 200px; padding: 8px;">
+            <button class="button" onclick="login()">登录</button>
+            <div id="login-response" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        // 存储token
+        let authToken = localStorage.getItem('authToken') || '';
+
+        // 设置默认headers
+        function getHeaders() {
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+            return headers;
+        }
+
+        // 登录
+        async function login() {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/auth/login', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    authToken = data.access_token;
+                    localStorage.setItem('authToken', authToken);
+                    document.getElementById('login-response').innerHTML = `<span class="success">登录成功！Token已保存</span>`;
+                } else {
+                    document.getElementById('login-response').innerHTML = `<span class="error">登录失败: ${data.detail}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('login-response').innerHTML = `<span class="error">网络错误: ${error.message}</span>`;
+            }
+        }
+
+        // 获取最新任务
+        async function getLatestTask() {
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/factory/latest', {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('latest-task-response').innerHTML = `<span class="success">任务获取成功！</span>\n${JSON.stringify(data, null, 2)}`;
+                    // 自动填充任务ID
+                    document.getElementById('task-id-input').value = data.id;
+                } else {
+                    document.getElementById('latest-task-response').innerHTML = `<span class="error">获取失败: ${data.detail}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('latest-task-response').innerHTML = `<span class="error">网络错误: ${error.message}</span>`;
+            }
+        }
+
+        // 获取任务资源
+        async function getTaskResources() {
+            const taskId = document.getElementById('task-id-input').value;
+
+            if (!taskId) {
+                document.getElementById('resources-response').innerHTML = `<span class="error">请输入任务ID</span>`;
+                return;
+            }
+
+            try {
+                const response = await fetch(`http://localhost:8001/api/v1/factory/resources/${taskId}`, {
+                    headers: getHeaders()
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('resources-response').innerHTML = `<span class="success">资源获取成功！共 ${data.length} 个</span>\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    document.getElementById('resources-response').innerHTML = `<span class="error">获取失败: ${data.detail}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('resources-response').innerHTML = `<span class="error">网络错误: ${error.message}</span>`;
+            }
+        }
+
+        // 创建新任务
+        async function createTask() {
+            const topic = document.getElementById('topic-input').value;
+
+            if (!topic) {
+                document.getElementById('create-task-response').innerHTML = `<span class="error">请输入主题</span>`;
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:8001/api/v1/factory/generate', {
+                    method: 'POST',
+                    headers: getHeaders(),
+                    body: JSON.stringify({ topic })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('create-task-response').innerHTML = `<span class="success">任务创建成功！</span>\n${JSON.stringify(data, null, 2)}`;
+                } else {
+                    document.getElementById('create-task-response').innerHTML = `<span class="error">创建失败: ${data.detail}</span>`;
+                }
+            } catch (error) {
+                document.getElementById('create-task-response').innerHTML = `<span class="error">网络错误: ${error.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

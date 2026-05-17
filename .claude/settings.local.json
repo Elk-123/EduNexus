@@ -7,7 +7,24 @@
       "Bash(npx vite *)",
       "Bash(curl -s http://localhost:5173/login)",
       "Bash(node -e ' *)",
-      "Bash(taskkill //F //IM uvicorn.exe)"
+      "Bash(taskkill //F //IM uvicorn.exe)",
+      "Bash(cd C:\\\\Users\\\\The shy\\\\Desktop\\\\EduNexus\\\\backend\\\\app)",
+      "Bash(python -c \"from main import app; print\\('App loaded successfully'\\)\")",
+      "Bash(python -m uvicorn app.main:app --reload --port 8001)",
+      "Bash(curl -X GET http://127.0.0.1:8001/health)",
+      "Bash(curl -X POST http://127.0.0.1:8001/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"test@edunexus.com\",\"password\":\"123456\"}')",
+      "Bash(curl -X GET http://127.0.0.1:8001/api/v1/factory/resources/7af660af-2dbe-48f0-bde1-20a8d91d1ae0 -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3Nzg4NjYyODMsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.Xqi8KCqz4ZaPd7y01GK2dPCF6Gyub0sYlhYRh1KF5V8\")",
+      "Bash(curl -X GET http://127.0.0.1:8001/api/v1/factory/resources/23c0f4e2-8ca4-40db-87ac-b3b6479a795b -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3Nzg4NjYyODMsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.Xqi8KCqz4ZaPd7y01GK2dPCF6Gyub0sYlhYRh1KF5V8\")",
+      "Bash(python -c ' *)",
+      "Bash(curl -s -X GET http://127.0.0.1:8001/api/v1/factory/latest -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3Nzg4Njk5NDgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.N4uWw5zX99dRMDxhKm7Ocsyksb1Fe6In865lSDOBWWQ\")",
+      "Bash(curl -s -X GET \"http://127.0.0.1:8001/api/v1/factory/latest\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3Nzg4Njk5NDgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.N4uWw5zX99dRMDxhKm7Ocsyksb1Fe6In865lSDOBWWQ\")",
+      "Bash(npm info *)",
+      "Bash(node -c \"EduNexus/src/views/ContentFactory/components/ResourceDisplay.vue\")",
+      "Bash(xargs grep -l \"generateMermaidDefinition\")",
+      "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QWRlbmV4cy5jb20iLCJleHAiOjE3MjI5ODgwMTB9.oQkGrT8V\" -d '{\"goal\": \"人工智能学习路径\"}')",
+      "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkwMjQxNjgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.vK_tcWDXaQWdNyyzV4g2QzKYCRNklxjOzj3QPQ5D_AE\" -d '{\"goal\": \"人工智能学习路径\"}')",
+      "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkwMjQxNjgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.vK_tcWDXaQWdNyyzV4g2QzKYCRNklxjOzj3QPQ5D_AE\" -d '{\"goal\": \"深度学习入门\"}')",
+      "Bash(curl -s \"http://localhost:8001/health\")"
     ]
   }
 }

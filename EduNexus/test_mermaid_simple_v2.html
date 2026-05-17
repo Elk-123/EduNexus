@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>超简单 Mermaid 测试</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Inter, sans-serif;
+      padding: 20px;
+    }
+    #chart {
+      background: #1a1a1a;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 20px;
+      min-height: 400px;
+      border: 1px solid #3b82f6;
+    }
+  </style>
+</head>
+<body>
+  <h1>超简单 Mermaid 测试</h1>
+  <button onclick="testBasic()">测试基础语法</button>
+  <button onclick="testMindmap()">测试 mindmap</button>
+  <button onclick="testComplex()">测试复杂 mindmap</button>
+  <div id="chart">点击按钮测试</div>
+
+  <script>
+    // 初始化 mermaid
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'dark',
+      themeVariables: {
+        background: 'transparent',
+        primaryColor: '#3b82f6',
+        primaryTextColor: '#ffffff',
+        primaryBorderColor: '#3b82f6',
+        lineColor: '#4b5563'
+      }
+    });
+
+    function testBasic() {
+      const chartElement = document.getElementById('chart');
+      const definition = `graph TD
+        A[开始] --> B{判断}
+        B -->|是| C[执行]
+        B -->|否| D[结束]`;
+
+      renderChart(definition, 'basic-test');
+    }
+
+    function testMindmap() {
+      const chartElement = document.getElementById('chart');
+      const definition = `mindmap
+  root((Root))
+    A
+      B1
+      B2
+    C
+      D1
+      D2`;
+
+      renderChart(definition, 'mindmap-test');
+    }
+
+    function testComplex() {
+      const chartElement = document.getElementById('chart');
+      const definition = `mindmap
+  root((Transformer))
+    ["核心概念"]
+      ["Q - Query"]
+      ["K - Key"]
+      ["V - Value"]
+    ["数学计算"]
+      ["点积"]
+      ["Softmax"]`;
+
+      renderChart(definition, 'complex-test');
+    }
+
+    function renderChart(definition, id) {
+      console.log('渲染图表:', definition);
+
+      const chartElement = document.getElementById('chart');
+
+      // 清空容器
+      chartElement.innerHTML = '<p>正在渲染...</p>';
+
+      mermaid.render(id, definition)
+        .then(result => {
+          console.log('渲染成功！');
+          chartElement.innerHTML = result;
+          console.log('已添加到容器');
+
+          // 强制应用样式
+          const svg = chartElement.querySelector('svg');
+          if (svg) {
+            svg.style.width = '100%';
+            svg.style.height = 'auto';
+            svg.style.background = 'transparent';
+
+            // 设置文本颜色
+            const texts = svg.querySelectorAll('text');
+            texts.forEach(text => {
+              text.style.fill = '#e2e8f0';
+              text.style.fontFamily = 'Inter, sans-serif';
+            });
+
+            console.log('SVG 样式已应用');
+          }
+        })
+        .catch(error => {
+          console.error('渲染失败:', error);
+          chartElement.innerHTML = `<p style="color: red;">错误: ${error.message}</p>`;
+        });
+    }
+  </script>
+</body>
+</html>

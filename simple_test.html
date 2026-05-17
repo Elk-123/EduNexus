@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>简单测试内容工厂</title>
+  <style>
+    body {
+      background-color: #0b0b0b;
+      color: #e2e8f0;
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .tab-container {
+      margin-top: 20px;
+    }
+    .tab-button {
+      background-color: #1f2937;
+      border: 1px solid #374151;
+      color: white;
+      padding: 10px 20px;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      margin-right: 5px;
+    }
+    .tab-button.active {
+      background-color: #374151;
+      border-bottom: 2px solid #60a5fa;
+    }
+    .tab-content {
+      display: none;
+      background-color: #141414;
+      border: 1px solid #374151;
+      border-radius: 0 0 8px 8px;
+      padding: 20px;
+      min-height: 400px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    h1, h2, h3 {
+      color: #60a5fa;
+    }
+    p {
+      line-height: 1.6;
+      color: #d1d5db;
+    }
+    .code-block {
+      background-color: #1e1e1e;
+      border: 1px solid #374151;
+      border-radius: 8px;
+      padding: 15px;
+      overflow-x: auto;
+      font-family: monospace;
+      white-space: pre-wrap;
+    }
+    .quiz-question {
+      background-color: #1e293b;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .quiz-option {
+      background-color: #334155;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin: 5px 0;
+      cursor: pointer;
+    }
+    .quiz-option:hover {
+      background-color: #475569;
+    }
+    .video-link {
+      display: inline-block;
+      background-color: #3b82f6;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 6px;
+      text-decoration: none;
+      margin: 5px 5px 5px 0;
+    }
+    .video-link:hover {
+      background-color: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>EduNexus 内容工厂测试</h1>
+  <p>显示 "Transformer 架构中的注意机制" 的 Mock 数据</p>
+
+  <div class="tab-container">
+    <button class="tab-button active" onclick="showTab('professor')">教授文档</button>
+    <button class="tab-button" onclick="showTab('mindmap')">思维导图</button>
+    <button class="tab-button" onclick="showTab('quiz')">测验题目</button>
+    <button class="tab-button" onclick="showTab('video')">视频资源</button>
+    <button class="tab-button" onclick="showTab('code')">代码实验</button>
+  </div>
+
+  <div id="professor" class="tab-content active">
+    <h2>深入理解：Transformer 架构中的注意机制</h2>
+
+    <h3>注意机制的起源与动机</h3>
+    <p>在2017年提出的Transformer架构中，注意机制（Attention）是革命性的创新。它解决了RNN序列建模的局限性，允许模型直接关注序列中任意位置的信息。这种机制模拟了人类认知中的注意力分配方式，使得模型能够学习到序列中不同部分之间的依赖关系。</p>
+
+    <h3>Scaled Dot-Product 注意力</h3>
+    <p>Transformer使用Scaled Dot-Product注意力，它通过计算查询（Query）、键（Key）和值（Value）之间的点积来获得注意力权重。具体来说，将Query与所有Key进行点积，通过softmax归一化得到权重，再与Value加权求和。缩放因子（1/√d_k）用于防止点积过大导致梯度消失。</p>
+
+    <h3>多头注意力的优势</h3>
+    <p>多头注意力（Multi-Head Attention）允许模型同时关注不同位置的不同表示子空间。每个头学习不同的注意力模式，有的关注语法结构，有的关注语义关系。这种并行处理增强了模型的表达能力，使得Transformer能够捕捉更复杂的序列关系。</p>
+
+    <h3>自注意力与掩码</h3>
+    <p>自注意力（Self-Attention）允许序列中的每个位置都关注序列中的所有位置。在解码器中，掩码注意力防止当前位置关注未来信息，保持自回归特性。这种设计使Transformer在机器翻译、文本生成等任务中表现出色。</p>
+  </div>
+
+  <div id="mindmap" class="tab-content">
+    <h2>Transformer 注意机制</h2>
+
+    <h3>理论基础</h3>
+    <p>• 注意力分数</p>
+    <p>  - 点积运算</p>
+    <p>  - 缩放因子</p>
+    <p>  - Softmax</p>
+    <p>• Query-Key-Value</p>
+    <p>  - 矩阵表示</p>
+    <p>  - 维度匹配</p>
+    <p>• 注意力权重</p>
+    <p>  - 概率分布</p>
+    <p>  - 权重解释</p>
+
+    <h3>多头注意力</h3>
+    <p>• 并行头设计</p>
+    <p>  - 参数共享</p>
+    <p>  - 特征分割</p>
+    <p>• 输出合并</p>
+    <p>  - 拼接操作</p>
+    <p>  - 线性变换</p>
+    <p>• 头的重要性</p>
+    <p>  - 不同视角</p>
+    <p>  - 互补信息</p>
+
+    <h3>应用实现</h3>
+    <p>• 位置编码</p>
+    <p>  - 正弦编码</p>
+    <p>  - 绝对位置</p>
+    <p>• 残差连接</p>
+    <p>  - 梯度流动</p>
+    <p>  - 信息保持</p>
+    <p>• 层归一化</p>
+    <p>  - 稳定训练</p>
+    <p>  - 收敛加速</p>
+
+    <h3>实际应用</h3>
+    <p>• 机器翻译</p>
+    <p>  - 跨语言对齐</p>
+    <p>  - 长距离依赖</p>
+    <p>• 文本生成</p>
+    <p>  - 上下文理解</p>
+    <p>  - 连贯性保证</p>
+    <p>• 图像处理</p>
+    <p>  - ViT架构</p>
+    <p>  - 特征聚合</p>
+  </div>
+
+  <div id="quiz" class="tab-content">
+    <h2>知识测验</h2>
+
+    <div class="quiz-question">
+      <h3>Q1: 在Transformer的注意力机制中，使用缩放因子（1/√d_k）的主要目的是什么？</h3>
+      <div class="quiz-option">A. 加快计算速度</div>
+      <div class="quiz-option">B. 防止梯度消失</div>
+      <div class="quiz-option">C. 减少内存使用</div>
+      <div class="quiz-option">D. 提高模型容量</div>
+      <p style="color: #60a5fa; margin-top: 10px;">解析：缩放因子用于防止点积值过大导致softmax函数进入梯度饱和区域，从而避免梯度消失问题。</p>
+    </div>
+
+    <div class="quiz-question">
+      <h3>Q2: 多头注意力机制相比单头注意力的主要优势是什么？</h3>
+      <div class="quiz-option">A. 计算效率更高</div>
+      <div class="quiz-option">B. 能够关注不同表示子空间</div>
+      <div class="quiz-option">C. 减少参数数量</div>
+      <div class="quiz-option">D. 简化实现难度</div>
+      <p style="color: #60a5fa; margin-top: 10px;">解析：多头注意力允许模型同时学习不同的注意力模式，每个头关注不同的表示子空间，从而获得更全面的理解。</p>
+    </div>
+
+    <div class="quiz-question">
+      <h3>Q3: 在Transformer解码器中，为什么需要掩码注意力机制？</h3>
+      <div class="quiz-option">A. 提高推理速度</div>
+      <div class="quiz-option">B. 防止信息泄露</div>
+      <div class="quiz-option">C. 减少计算复杂度</div>
+      <div class="quiz-option">D. 增强正则化效果</div>
+      <p style="color: #60a5fa; margin-top: 10px;">解析：掩码注意力防止当前位置关注到未来位置的信息，保持自回归特性，确保预测时的因果约束。</p>
+    </div>
+  </div>
+
+  <div id="video" class="tab-content">
+    <h2>视频教程</h2>
+
+    <div style="margin-bottom: 30px;">
+      <h3>Scene 1: 注意力机制的诞生</h3>
+      <p>视觉画面：动画展示从CNN到RNN再到Transformer的演进过程，突出注意力机制的革命性</p>
+      <p>"在2017年，Google的研究团队提出了Transformer架构，彻底改变了NLP领域。其核心创新就是注意力机制..."</p>
+
+      <h4>相关视频：</h4>
+      <a href="https://www.youtube.com/watch/wjZQCy8mrxA" target="_blank" class="video-link">
+        The Illustrated Transformer: Attention Mechanism Explained - 15:32
+      </a><br>
+      <a href="https://www.youtube.com/watch/9sY3TCs4N-8" target="_blank" class="video-link">
+        Transformer Architecture: Attention Mechanism - 22:45
+      </a>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3>Scene 2: 注意力分数的计算</h3>
+      <p>视觉画面：动态演示Query、Key、Value三个矩阵的乘法过程，以及softmax的归一化效果</p>
+      <p>"注意力分数通过Query和Key的点积计算，经过缩放和softmax处理，最后与Value加权求和..."</p>
+
+      <h4>相关视频：</h4>
+      <a href="https://www.youtube.com/watch/7EsRwe4JRTo" target="_blank" class="video-link">
+        Visualizing Attention in Neural Networks - 18:20
+      </a>
+    </div>
+
+    <div style="margin-bottom: 30px;">
+      <h3>Scene 3: 多头注意力的威力</h3>
+      <p>视觉画面：同时展示8个注意力头的不同关注模式，每个头突出不同的文本特征</p>
+      <p>"多头注意力让模型能够同时关注不同方面的信息。看，每个头都在学习不同的注意力模式..."</p>
+
+      <h4>相关视频：</h4>
+      <a href="https://www.youtube.com/watch/GABz3zV3it0" target="_blank" class="video-link">
+        Multi-Head Attention Explained - 12:45
+      </a>
+    </div>
+
+    <div>
+      <h3>Scene 4: 实际应用展示</h3>
+      <p>视觉画面：展示BERT、GPT等模型如何利用注意力机制，以及在实际任务中的表现</p>
+      <p>"基于注意力的模型已经在机器翻译、文本生成、问答系统等任务上取得了突破性成果..."</p>
+
+      <h4>相关视频：</h4>
+      <a href="https://www.bilibili.com/video/BV1Jt411d7hu" target="_blank" class="video-link">
+        Transformer Models in Practice - 45:30 (Bilibili)
+      </a>
+    </div>
+  </div>
+
+  <div id="code" class="tab-content">
+    <h2>Transformer 注意机制 - 代码实验</h2>
+    <p>通过PyTorch实现和可视化注意力机制，深入理解其工作原理</p>
+
+    <h3>完整代码：</h3>
+    <div class="code-block"""
+Transformer 注意机制详解实验
+通过PyTorch实现和可视化，深入理解Self-Attention和Multi-Head Attention
+"""
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import Optional
+
+def scaled_dot_product_attention(query, key, value, mask: Optional[torch.Tensor] = None):
+    """实现Scaled Dot-Product注意力机制"""
+    d_k = query.size(-1)
+    # 计算注意力分数
+    scores = torch.matmul(query, key.transpose(-2, -1)) / np.sqrt(d_k)
+
+    # 应用掩码（如果需要）
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, -1e9)
+
+    # 计算注意力权重
+    attention_weights = F.softmax(scores, dim=-1)
+
+    # 加权求和
+    output = torch.matmul(attention_weights, value)
+
+    return output, attention_weights</div>
+
+    <h3>预期输出：</h3>
+    <div class="code-block=== Transformer 注意力机制实验 ===
+
+示例文本: The cat sat on the mat because it was tired
+词汇表大小: 8
+嵌入维度: 64
+序列长度: 10
+
+步骤1: 创建词嵌入
+输入形状: torch.Size([1, 10, 64])
+
+步骤2: 测试自注意力机制
+自注意力输出形状: torch.Size([1, 10, 64])
+注意力权重形状: torch.Size([1, 10, 10])
+权重行和（应该为1）: tensor([[1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000, 1.0000,
+         1.0000]])
+
+步骤3: 测试多头注意力机制
+多头注意力输出形状: torch.Size([1, 10, 64])
+多头注意力权重形状: torch.Size([1, 10, 10])
+每个头的维度: 8
+
+步骤4: 分析注意力模式
+自注意力权重第一行（关注第一个词'The'）:
+  The: 0.112
+  cat: 0.098
+  sat: 0.105
+  on: 0.102
+  the: 0.099
+  mat: 0.104
+  because: 0.100
+  it: 0.110
+  was: 0.106
+  tired: 0.064
+
+多头注意力平均权重（第一行）:
+  The: 0.112
+  cat: 0.098
+  sat: 0.105
+  on: 0.102
+  the: 0.099
+  mat: 0.104
+  because: 0.100
+  it: 0.110
+  was: 0.106
+  tired: 0.064
+
+步骤5: 测试掩码注意力（模拟解码器场景）
+掩码后第一个词的注意力权重（不应该关注后面的词）:
+  The: 1.000
+  cat: 0.000
+  sat: 0.000
+  on: 0.000
+  the: 0.000
+  mat: 0.000
+  because: 0.000
+  it: 0.000
+  was: 0.000
+  tired: 0.000</div>
+
+    <h3>扩展练习：</h3>
+    <ul>
+      <li>修改嵌入维度，观察对注意力模式的影响</li>
+      <li>实现相对位置编码并添加到注意力机制中</li>
+      <li>比较不同数量的头的注意力效果的差异</li>
+      <li>尝试不同的注意力变体，如Additive Attention</li>
+    </ul>
+  </div>
+</body>
+
+<script>
+  function showTab(tabName) {
+    // 隐藏所有标签页
+    const tabs = document.querySelectorAll('.tab-content');
+    tabs.forEach(tab => {
+      tab.classList.remove('active');
+    });
+
+    // 取消所有按钮的激活状态
+    const buttons = document.querySelectorAll('.tab-button');
+    buttons.forEach(button => {
+      button.classList.remove('active');
+    });
+
+    // 显示选中的标签页
+    document.getElementById(tabName).classList.add('active');
+
+    // 激活对应的按钮
+    event.target.classList.add('active');
+  }
+</script>
+</html>

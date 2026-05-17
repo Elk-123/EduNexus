@@ -1,6 +1,6 @@
 <!-- src/views/ContentFactory/index.vue -->
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   BrainCircuit, FileText, GitFork, ClipboardCheck, Video, Code2, ShieldCheck
 } from 'lucide-vue-next'
@@ -10,6 +10,7 @@ import ResourceDisplay from './components/ResourceDisplay.vue'
 import AgentStatusCard from './components/AgentStatusCard.vue'
 import AgentDetailView from './components/AgentDetailView.vue'
 import { useFactoryStore } from '@/stores/factoryStore'
+import apiClient from '@/api/client'
 
 const factoryStore = useFactoryStore()
 
@@ -45,8 +46,41 @@ const logs = computed(() => factoryStore.logs)
 // 启动生成流水线
 const runWorkflow = async (topic: string) => {
   selectedAgent.value = null
-  await factoryStore.startGeneration(topic)
+  console.log('Starting generation for topic:', topic)
+  try {
+    await factoryStore.startGeneration(topic)
+    console.log('Generation completed. Resources:', factoryStore.resources)
+    console.log('Current topic:', factoryStore.currentTopic)
+  } catch (error) {
+    console.error('Generation failed:', error)
+  }
 }
+
+// 页面加载时尝试加载最新的任务数据
+onMounted(async () => {
+  try {
+    // 获取最新任务
+    console.log('Fetching latest task...')
+    const response = await apiClient.get('/factory/latest')
+    console.log('Latest task response:', response)
+    if (response.data) {
+      const taskId = response.data.id
+      await factoryStore.loadTaskData(taskId)
+      console.log('Loaded latest task:', taskId, response.data)
+    }
+  } catch (error) {
+    console.log('No existing task found, waiting for user to generate new one')
+  }
+})
+
+// 调试：监听store状态
+watch(() => factoryStore.resources, (newResources) => {
+  console.log('ContentFactory: Store resources updated', {
+    count: newResources?.length,
+    types: newResources?.map(r => r.agent_type),
+    isGenerating: factoryStore.isGenerating
+  })
+}, { deep: true })
 
 // 点击智能体卡片进入详情
 const handleAgentClick = (agent: any) => {
@@ -101,9 +135,10 @@ const handleAgentClick = (agent: any) => {
 
       <!-- 右侧：主展示区 -->
       <section class="flex-1 min-w-0">
-        <ResourceDisplay 
-          :isGenerating="isGenerating" 
-          :topic="currentTopic" 
+        <ResourceDisplay
+          :resources="factoryStore.resources"
+          :isGenerating="factoryStore.isGenerating"
+          :topic="factoryStore.currentTopic"
         />
       </section>
     </main>

@@ -6,7 +6,7 @@ from sqlalchemy.future import select
 
 from app.models.factory import GenerationTask, GeneratedResource
 from app.schemas.profile import ProfileDimensions
-from app.services.content_generator import generator
+# from app.services.content_generator import generator  # 避免循环导入，在函数内部导入
 from app.core.websocket import ws_manager
 
 logger = logging.getLogger("edunexus.orchestrator")
@@ -46,6 +46,8 @@ class AgentOrchestrator:
             await self._broadcast(task_id, "agent_status", {"agent": agent_def["role"], "status": "running"})
             await self._broadcast(task_id, "agent_log", {"agent": agent_def["role"], "message": f"{agent_def['name']}开始生成内容...", "type": "info"})
 
+            # 在函数内部导入，避免循环导入
+            from app.services.content_generator import generator
             content = await generator.generate_for_agent(agent_id, topic, profile)
 
             resource = GeneratedResource(
@@ -69,6 +71,8 @@ class AgentOrchestrator:
         await self._broadcast(task_id, "agent_status", {"agent": "Reviewer", "status": "running"})
         await self._broadcast(task_id, "agent_log", {"agent": "Reviewer", "message": "正在审查全部产出质量...", "type": "info"})
 
+        # 在函数内部导入，避免循环导入
+        from app.services.content_generator import generator
         review_content = await generator.generate_for_agent("reviewer", topic, profile)
         review_resource = GeneratedResource(
             task_id=task.id,

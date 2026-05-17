@@ -36,31 +36,23 @@ async def generate_content(
     current_user: Student = Depends(deps.get_current_user),
 ):
     """提交主题，创建生成任务，后台启动多智能体流水线"""
-    task = GenerationTask(
-        student_id=current_user.id,
-        topic=payload.topic,
-        status="running",
-        agents_status={"manager": "running"},
-    )
-    db.add(task)
-    await db.commit()
-    await db.refresh(task)
+    # 使用generator创建任务
+    result = await generator.generate_content(payload, current_user.id, db)
 
     # 获取学生画像（如果有的话）
-    result = await db.execute(
+    profile_result = await db.execute(
         select(StudentProfile).where(StudentProfile.student_id == current_user.id)
     )
-    profile_db = result.scalars().first()
+    profile_db = profile_result.scalars().first()
     profile = profile_db.profile_data if profile_db else None
 
-    # 后台异步执行流水线（使用独立DB会话，避免请求结束后会话关闭）
-    task_id = str(task.id)
-    student_id = current_user.id
-    bg_task = asyncio.create_task(_safe_run_pipeline(task_id, student_id, profile))
+    # 后台异步执行流水线
+    task_id = result["task_id"]
+    bg_task = asyncio.create_task(_safe_run_pipeline(task_id, current_user.id, profile))
     _background_tasks.add(bg_task)
     bg_task.add_done_callback(_background_tasks.discard)
 
-    return {"task_id": task_id, "status": "running"}
+    return result
 
 
 async def _safe_run_pipeline(task_id: str, student_id, profile):
@@ -101,6 +93,73 @@ async def _safe_run_pipeline(task_id: str, student_id, profile):
                 await ws_manager.broadcast(task_id, {"type": "error", "message": str(e)})
             except Exception:
                 pass
+
+
+@router.get("/simple-debug")
+async def simple_debug():
+    """最简单的调试端点"""
+    return {"message": "Simple debug endpoint works"}
+async def test_debug(
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: Student = Depends(deps.get_current_user),
+):
+    """调试端点"""
+    print(f"[DEBUG] test-debug called for user: {current_user.id}")
+
+    # 查看用户的所有任务
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.student_id == current_user.id,
+        ).order_by(GenerationTask.created_at.desc())
+    )
+    tasks = result.scalars().all()
+    print(f"[DEBUG] User has {len(tasks)} tasks")
+
+    if tasks:
+        print(f"[DEBUG] Latest task ID: {tasks[0].id}, Status: {tasks[0].status}")
+        return {"message": f"Found {len(tasks)} tasks", "latest_id": str(tasks[0].id)}
+    else:
+        return {"message": "No tasks found"}
+
+@router.get("/latest", response_model=TaskStatusResponse)
+async def get_latest_task(
+    db: AsyncSession = Depends(deps.get_db),
+    current_user: Student = Depends(deps.get_current_user),
+):
+    """获取最新的生成任务"""
+    from app.schemas.factory import TaskStatusResponse
+
+    print(f"[DEBUG] /latest called for user: {current_user.id}")
+    result = await db.execute(
+        select(GenerationTask).where(
+            GenerationTask.student_id == current_user.id,
+        ).order_by(GenerationTask.created_at.desc()).limit(1)
+    )
+    task = result.scalars().first()
+    print(f"[DEBUG] Found task: {task is not None}, task_id: {task.id if task else None}")
+    if not task:
+        print(f"[DEBUG] No task found for user {current_user.id}")
+        # 查看该用户的所有任务
+        all_result = await db.execute(
+            select(GenerationTask).where(
+                GenerationTask.student_id == current_user.id,
+            )
+        )
+        all_tasks = all_result.scalars().all()
+        print(f"[DEBUG] User has {len(all_tasks)} tasks total")
+        raise HTTPException(status_code=404, detail="没有找到生成任务")
+
+    # 手动构建响应对象
+    response = TaskStatusResponse(
+        id=task.id,
+        topic=task.topic,
+        status=task.status,
+        agents_status=task.agents_status or {},
+        created_at=task.created_at
+    )
+
+    print(f"[DEBUG] Returning response: {response}")
+    return response
 
 
 @router.get("/status/{task_id}", response_model=TaskStatusResponse)

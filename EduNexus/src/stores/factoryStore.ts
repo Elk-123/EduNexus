@@ -69,7 +69,10 @@ export const useFactoryStore = defineStore('factory', () => {
         if (currentTaskId.value) {
           try {
             resources.value = await getTaskResources(currentTaskId.value)
-          } catch { /* ignore */ }
+            console.log('Resources loaded via WebSocket:', resources.value)
+          } catch (error) {
+            console.error('Failed to load resources:', error)
+          }
         }
       })
       ws.on('error', (data) => {
@@ -96,11 +99,43 @@ export const useFactoryStore = defineStore('factory', () => {
           isGenerating.value = false
           stopPolling()
           if (status.status === 'completed') {
-            resources.value = await getTaskResources(currentTaskId.value)
+            try {
+              resources.value = await getTaskResources(currentTaskId.value)
+              console.log('Resources loaded via polling:', resources.value)
+            } catch (error) {
+              console.error('Failed to load resources via polling:', error)
+            }
           }
         }
       } catch { /* ignore poll errors */ }
     }, 3000)
+  }
+
+  // 加载指定任务的数据
+  async function loadTaskData(taskId: string) {
+    try {
+      const mockResources = await getTaskResources(taskId)
+      if (mockResources.length > 0) {
+        resources.value = mockResources
+        currentTopic.value = 'Transformer 架构中的注意机制' // 假设这是默认主题
+        agentsStatus.value = {
+          manager: 'success',
+          professor: 'success',
+          architect: 'success',
+          examiner: 'success',
+          director: 'success',
+          hacker: 'success',
+          reviewer: 'success'
+        }
+        isGenerating.value = false
+        console.log('Task data loaded successfully:', mockResources)
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error('Failed to load task data:', error)
+      return false
+    }
   }
 
   function stopPolling() {
@@ -123,5 +158,5 @@ export const useFactoryStore = defineStore('factory', () => {
   }
 
   return { isGenerating, currentTaskId, currentTopic, logs, resources, agentsStatus, error,
-           addLog, startGeneration, reset }
+           addLog, startGeneration, reset, loadTaskData }
 })
