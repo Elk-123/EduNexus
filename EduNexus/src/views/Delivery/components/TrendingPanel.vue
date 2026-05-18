@@ -52,10 +52,13 @@ const sourceColor = (source: string) => {
 
     <!-- Trend List -->
     <div class="space-y-4">
-      <div
+      <a
         v-for="(item, idx) in props.items"
         :key="idx"
-        class="group cursor-pointer space-y-2"
+        :href="item.url"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="group block space-y-2"
       >
         <div class="flex items-start justify-between gap-3">
           <div class="flex-grow space-y-1">
@@ -79,7 +82,7 @@ const sourceColor = (source: string) => {
             {{ item.meta }}
           </div>
         </div>
-      </div>
+      </a>
     </div>
 
     <!-- Footer Action -->

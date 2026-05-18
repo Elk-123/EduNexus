@@ -6,6 +6,7 @@ export interface TodayResource {
   status: 'completed' | 'current' | 'locked'
   ai_reason?: string
   duration: string
+  url?: string  // 点击跳转链接
 }
 
 export interface ResourceProgress {
@@ -19,6 +20,7 @@ export interface TrendingItem {
   title: string
   meta: string
   tag: string
+  url: string  // 点击跳转链接
 }
 
 export interface ResourceDetail {

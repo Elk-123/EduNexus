@@ -1,16 +1,17 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Union
 from uuid import UUID
 
 
 class TodayResourceResponse(BaseModel):
-    id: UUID
+    id: Union[UUID, str]
     resource_type: str   # video | document | code | quiz
     title: str
     description: str = ""
     status: str = "current"  # completed | current | locked
     ai_reason: Optional[str] = None
     duration: str = ""
+    url: Optional[str] = None  # 点击跳转链接
 
     class Config:
         from_attributes = True
@@ -35,3 +36,4 @@ class TrendingItem(BaseModel):
     title: str
     meta: str
     tag: str
+    url: str  # 点击跳转链接

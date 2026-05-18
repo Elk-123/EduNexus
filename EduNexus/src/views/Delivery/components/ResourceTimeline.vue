@@ -1,18 +1,12 @@
 <script setup lang="ts">
-import { Play, FileText, Code, CheckSquare, Lock, Sparkles, ArrowRight } from 'lucide-vue-next'
+import { Play, FileText, Code, CheckSquare, Sparkles } from 'lucide-vue-next'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import type { TodayResource } from '@/types/resources'
-import type { ResourceProgress } from '@/types/resources'
 
 defineProps<{
   resources: TodayResource[]
   isLoading?: boolean
-}>()
-
-const emit = defineEmits<{
-  'update-progress': [resourceId: string, progress: ResourceProgress]
 }>()
 
 const getIcon = (type: string) => {
@@ -22,13 +16,6 @@ const getIcon = (type: string) => {
     case 'code': return Code
     case 'quiz': return CheckSquare
     default: return FileText
-  }
-}
-
-const handleStart = (item: TodayResource) => {
-  if (item.status === 'locked') return
-  if (item.status === 'current') {
-    emit('update-progress', item.id, { status: 'completed', progress_percentage: 100, time_spent: 0 })
   }
 }
 </script>
@@ -47,15 +34,22 @@ const handleStart = (item: TodayResource) => {
         <p class="text-zinc-500 text-sm">暂无推送资源，请先在内容工厂生成内容</p>
       </div>
 
-      <div v-for="item in resources" :key="item.id" class="relative pl-20 group">
-        <div :class="cn('absolute left-4 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center z-10',
+      <a
+        v-for="item in resources"
+        :key="item.id"
+        :href="item.url"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="relative pl-20 group block"
+      >
+        <div :class="cn('absolute left-4 top-0 w-8 h-8 rounded-full border-2 flex items-center justify-center z-10 pointer-events-none',
           item.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-black' :
           item.status === 'current' ? 'bg-blue-600 border-blue-600 text-white animate-pulse' :
           'bg-zinc-900 border-zinc-700 text-zinc-600')">
-          <component :is="item.status === 'locked' ? Lock : getIcon(item.resource_type)" :size="14" />
+          <component :is="getIcon(item.resource_type)" :size="14" />
         </div>
-        <div :class="cn('rounded-3xl border p-6 bg-zinc-900/40 border-zinc-800 transition-all', item.status === 'current' && 'border-blue-500/50 bg-zinc-900/80')">
-          <div class="flex flex-col md:flex-row gap-6">
+        <div :class="cn('rounded-3xl border p-6 bg-zinc-900/40 border-zinc-800 transition-all hover:border-blue-500/30', item.status === 'current' && 'border-blue-500/50 bg-zinc-900/80')">
+          <div class="flex flex-col md:flex-row gap-6 pointer-events-none">
             <div class="w-full md:w-40 h-24 rounded-2xl bg-zinc-800 flex items-center justify-center">
               <component :is="getIcon(item.resource_type)" :size="24" class="text-zinc-600" />
             </div>
@@ -68,19 +62,9 @@ const handleStart = (item: TodayResource) => {
                 <p class="text-xs text-indigo-300/80 italic"><span class="font-bold not-italic">Planner Insight: </span>{{ item.ai_reason }}</p>
               </div>
             </div>
-            <div class="flex flex-col justify-end">
-              <Button
-                :disabled="item.status === 'locked'"
-                :variant="item.status === 'completed' ? 'outline' : 'default'"
-                class="rounded-full gap-2"
-                @click="handleStart(item)"
-              >
-                {{ item.status === 'completed' ? '回顾' : '开始' }} <ArrowRight :size="14" />
-              </Button>
-            </div>
           </div>
         </div>
-      </div>
+      </a>
     </div>
   </div>
 </template>
