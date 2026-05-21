@@ -14,7 +14,7 @@ export class EduNexusWebSocket {
 
   connect(taskId: string) {
     const token = localStorage.getItem('token')
-    const baseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8000/api/v1'
+    const baseUrl = import.meta.env.VITE_WS_BASE_URL || 'ws://localhost:8001/api/v1'
     this.url = `${baseUrl}/factory/stream/${taskId}?token=${token}`
 
     try {

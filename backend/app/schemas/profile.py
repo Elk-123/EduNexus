@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from uuid import UUID
 
 # 前端提交的破冰对话数据
@@ -27,3 +27,21 @@ class ProfileResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# --- 破冰对话 (DeepSeek 驱动) ---
+
+class ChatMessage(BaseModel):
+    role: str  # "user" | "assistant"
+    content: str
+
+
+class OnboardingChatRequest(BaseModel):
+    messages: list[ChatMessage]
+
+
+class OnboardingChatResponse(BaseModel):
+    message: str
+    options: list[str] = []
+    phase: str = "questioning"  # "questioning" | "summarizing"
+    collected_data: Optional[Dict[str, list[str]]] = None

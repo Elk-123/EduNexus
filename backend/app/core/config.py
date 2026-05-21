@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
+    # DeepSeek API (用于破冰对话)
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+
     @property
     def is_production(self) -> bool:
         """判断是否为生产环境"""

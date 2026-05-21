@@ -25,3 +25,21 @@ export interface ProfileResponse {
   profile_data: ProfileDimensions
   version: number
 }
+
+// --- 破冰对话 (DeepSeek 驱动) ---
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface OnboardingChatRequest {
+  messages: ChatMessage[]
+}
+
+export interface OnboardingChatResponse {
+  message: string
+  options: string[]
+  phase: 'questioning' | 'summarizing'
+  collected_data: Record<string, string[]> | null
+}

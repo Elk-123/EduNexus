@@ -3,11 +3,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from app.api import deps
-from app.schemas.profile import OnboardingSubmission, ProfileResponse, ProfileDimensions
+from app.schemas.profile import OnboardingSubmission, ProfileResponse, ProfileDimensions, OnboardingChatRequest, OnboardingChatResponse
 from app.models.profile import StudentProfile
 from app.services.profile_analyzer import analyzer
+from app.services.onboarding_chat import onboarding_chat_service
 
 router = APIRouter()
+
+
+@router.post("/onboarding/chat", response_model=OnboardingChatResponse)
+async def onboarding_chat(
+    payload: OnboardingChatRequest,
+    current_user=Depends(deps.get_current_user),
+):
+    """DeepSeek 驱动的破冰对话：发送对话历史，获取下一轮 agent 消息"""
+    messages_dicts = [{"role": m.role, "content": m.content} for m in payload.messages]
+    result = await onboarding_chat_service.chat(messages_dicts)
+    return OnboardingChatResponse(**result)
 
 
 @router.post("/onboarding", response_model=ProfileResponse)
