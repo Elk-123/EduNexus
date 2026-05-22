@@ -1,6 +1,5 @@
 import json
 import re
-import asyncio
 import logging
 import aiohttp
 
@@ -9,7 +8,6 @@ from app.core.config import settings
 logger = logging.getLogger("edunexus")
 
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
-MAX_RETRIES = 3
 
 SYSTEM_PROMPT = """你是一个专业的教育破冰导师，名叫 EduNexus。你正在与一位新学生进行破冰对话，目标是了解学生的学习背景，以便为其构建个性化的学习画像。
 
@@ -56,7 +54,8 @@ SYSTEM_PROMPT = """你是一个专业的教育破冰导师，名叫 EduNexus。�
 ```
 
 注意：options 是让用户点击的简短标签（3-8个字），当 phase 为 "summarizing" 时 options 可为空数组。
-当 collected_data 不为 null 时，其中每个字段必须是对应维度收集到的所有内容的字符串数组。"""
+当 collected_data 不为 null 时，其中每个字段必须是对应维度收集到的所有内容的字符串数组。
+"""
 
 
 class OnboardingChatService:
@@ -84,6 +83,7 @@ class OnboardingChatService:
             "messages": full_messages,
             "temperature": 0.7,
             "max_tokens": 1024,
+            "thinking": {"type": "disabled"},
         }
 
         headers = {
@@ -94,52 +94,34 @@ class OnboardingChatService:
         timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=60)
         connector = aiohttp.TCPConnector(ssl=False)
 
-        last_error = None
-        for attempt in range(MAX_RETRIES):
-            try:
-                logger.info(f"Calling DeepSeek API (attempt {attempt + 1}/{MAX_RETRIES})")
-                async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                    async with session.post(
-                        DEEPSEEK_API_URL, json=payload, headers=headers
-                    ) as resp:
-                        logger.info(f"DeepSeek API response status: {resp.status}")
-                        if resp.status == 200:
-                            data = await resp.json()
-                            logger.info(f"DeepSeek API response data keys: {data.keys() if isinstance(data, dict) else 'not dict'}")
-                            raw_content = data["choices"][0]["message"]["content"].strip()
-                            logger.info(f"Raw DeepSeek response (first 500 chars): {raw_content[:500]}")
-                            return self._parse_response(raw_content)
+        try:
+            logger.info("Calling DeepSeek API")
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.post(
+                    DEEPSEEK_API_URL, json=payload, headers=headers
+                ) as resp:
+                    logger.info(f"DeepSeek API response status: {resp.status}")
+                    if resp.status == 200:
+                        data = await resp.json()
+                        raw_content = data["choices"][0]["message"]["content"].strip()
+                        logger.info(f"Raw DeepSeek response (first 500 chars): {raw_content[:500]}")
+                        result = self._parse_response(raw_content)
+                        if result is not None:
+                            return result
 
-                        error_text = await resp.text()
-                        logger.error(f"DeepSeek API error {resp.status}: {error_text[:500]}")
-                        if resp.status in (429, 503):
-                            last_error = RuntimeError(f"DeepSeek 服务繁忙 (attempt {attempt + 1}/{MAX_RETRIES})")
-                            logger.warning(f"DeepSeek {resp.status}, retrying in {(attempt + 1) * 2}s")
-                            await asyncio.sleep((attempt + 1) * 2)
-                            continue
-                        raise RuntimeError(f"DeepSeek API error {resp.status}: {error_text}")
+                    error_text = await resp.text()
+                    logger.error(f"DeepSeek API error {resp.status}: {error_text[:500]}")
 
-            except aiohttp.ClientConnectorError as e:
-                last_error = RuntimeError(f"无法连接 DeepSeek API，请检查网络: {str(e)}")
-                logger.error(f"ClientConnectorError: {e}")
-                raise last_error
-            except aiohttp.ClientError as e:
-                last_error = RuntimeError(f"DeepSeek 网络请求失败: {str(e)}")
-                logger.error(f"ClientError: {e}")
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep((attempt + 1) * 2)
-                    continue
-                raise last_error
-            except Exception as e:
-                last_error = RuntimeError(f"Unexpected error: {str(e)}")
-                logger.error(f"Unexpected error in DeepSeek chat: {e}", exc_info=True)
-                if attempt < MAX_RETRIES - 1:
-                    await asyncio.sleep((attempt + 1) * 2)
-                    continue
-                raise last_error
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"Cannot connect to DeepSeek API: {e}")
+        except aiohttp.ClientError as e:
+            logger.error(f"DeepSeek network error: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in DeepSeek chat: {e}", exc_info=True)
 
-        # 所有重试失败，返回静态回复
-        logger.error("All DeepSeek API attempts failed, falling back to static response")
+        # 任何失败直接返回静态 fallback
+        logger.error("DeepSeek API failed, falling back to static response")
+        print(">>> [FALLBACK] DeepSeek API failed, using static response")
         return {
             "message": "看来连接有点问题，但我还在。能简单跟我说一下你的学习背景吗？",
             "options": ["Python 编程", "高等数学", "数据结构", "前端开发"],
@@ -190,25 +172,43 @@ class OnboardingChatService:
             except json.JSONDecodeError:
                 pass
 
-        logger.error(f"Failed to parse DeepSeek response as JSON: {raw[:300]}")
-        # 解析失败时：提取原始文本作为消息内容，保持 questioning 阶段继续对话
-        # 不要返回 summarizing，否则前端会错误地跳转到总结阶段
-        clean_text = raw.strip()
-        # 移除 markdown 代码块标记残余
-        clean_text = re.sub(r'```(?:json)?', '', clean_text).strip()
-        if clean_text:
-            return {
-                "message": clean_text,
-                "options": ["好的，继续", "请再问一个方面", "我补充一点", "换个角度说"],
-                "phase": "questioning",
-                "collected_data": None
-            }
-        # 完全为空时的终极兜底
+        # Step 5: Natural language fallback — extract message and options from plain text
+        result = self._parse_natural_language(text)
+        if result is not None:
+            return result
+
+        logger.error(f"Failed to parse DeepSeek response: {raw[:300]}")
+        return None
+
+    def _parse_natural_language(self, text: str) -> dict | None:
+        """When the model outputs plain text instead of JSON, extract message and options."""
+        lines = text.strip().split("\n")
+
+        # Extract options: lines starting with - or numbered (1. 2. etc.)
+        option_pattern = re.compile(r'^[-\d]\s*[.\)]\s*')
+        option_lines = [l for l in lines if option_pattern.match(l.strip())]
+        options = [re.sub(r'^[-\d]\s*[.\)]\s*', '', l.strip()) for l in option_lines]
+
+        # Message is everything that's not an option line
+        msg_lines = [l for l in lines if not option_pattern.match(l.strip())]
+        message = "\n".join(msg_lines).strip()
+
+        if not message:
+            return None
+
+        # Clean up empty lines in message
+        message = re.sub(r'\n{2,}', '\n', message)
+
+        # Determine phase: has options → questioning, no options → summarizing
+        phase = "questioning" if options else "summarizing"
+
+        logger.info(f"Natural language fallback: extracted phase={phase}, options={options}, message={message[:100]}")
+        print(f">>> [NL-FALLBACK] phase={phase}, options={options}, message={message[:80]}...")
         return {
-            "message": "我理解了。能再跟我多说说你的学习情况吗？",
-            "options": ["好的，继续", "请再问一个方面", "我补充一点"],
-            "phase": "questioning",
-            "collected_data": None
+            "message": message,
+            "options": options if options else [],
+            "phase": phase,
+            "collected_data": None,
         }
 
 
