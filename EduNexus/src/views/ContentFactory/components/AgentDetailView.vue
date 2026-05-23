@@ -1,16 +1,253 @@
 <!-- src/views/ContentFactory/components/AgentDetailView.vue -->
 <script setup lang="ts">
-import { ref, onMounted, nextTick } from 'vue'
-import { X, Send, Bot, User, Sparkles, MessageSquareQuote } from 'lucide-vue-next'
+import { ref, onMounted, nextTick, computed, watch } from 'vue'
+import { X, Send, Bot, User, Sparkles, FileText, Copy, CheckCircle2 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { chatWithAgent } from '@/api/factory'
+import type { GeneratedResource } from '@/types/factory'
 
 const props = defineProps<{
   agent: any
   topic: string
+  resources: GeneratedResource[]
 }>()
 
 const emit = defineEmits(['close'])
+
+// 从传入资源中找到对应 agent 的资源
+const agentResource = computed(() => {
+  const r = props.resources.find(item => item.agent_type === props.agent.role.toLowerCase())
+  return r as typeof r | undefined
+})
+
+// 测验题目（带难度标签和选项字母）
+const quizQuestions = computed(() => {
+  const questions = agentResource.value?.content?.questions ?? []
+  const levels = ['基础', '进阶', '高级'] as const
+  return questions.map((q: any, i: number) => ({
+    ...q,
+    _index: i,
+    _difficulty: levels[i % 3],
+    _optionLetters: ['A', 'B', 'C', 'D', 'E', 'F'].slice(0, q.options.length),
+  }))
+})
+
+// 幻觉风险标签
+const riskLabel = computed(() => {
+  const risk = agentResource.value?.content?.hallucination_risk
+  return risk ? (risk === 'low' ? '低风险' : risk === 'medium' ? '中风险' : '高风险') : ''
+})
+
+// 用于架构师思维导图渲染的 refs
+const mindmapRef = ref<HTMLElement | null>(null)
+
+// 初始化和渲染 mermaid
+const initAndRenderMindmap = async (retryCount = 0) => {
+  if (!mindmapRef.value) {
+    if (retryCount < 3) {
+      setTimeout(() => {
+        initAndRenderMindmap(retryCount + 1)
+      }, 100 * (retryCount + 1))
+      return
+    } else {
+      return
+    }
+  }
+
+  if (!agentResource.value?.content?.mindmap) {
+    mindmapRef.value.innerHTML = '<p class="text-slate-500 text-sm">暂无思维导图数据</p>'
+    return
+  }
+
+  try {
+    if (typeof window.mermaid === 'undefined') {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script')
+        script.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'
+        script.onload = resolve
+        script.onerror = reject
+        document.head.appendChild(script)
+      })
+    }
+
+    if (!mermaidInitialized) {
+      await window.mermaid.initialize({
+        startOnLoad: false,
+        theme: 'dark',
+        themeVariables: {
+          background: 'transparent',
+          primaryColor: '#3b82f6',
+          primaryTextColor: '#ffffff',
+          primaryBorderColor: '#3b82f6',
+          lineColor: '#4b5563'
+        }
+      })
+      mermaidInitialized = true
+    }
+
+    renderMindmap()
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (mindmapRef.value) {
+      mindmapRef.value.innerHTML = `<p class="text-red-500 text-sm">图表加载失败: ${errorMessage}</p>`
+    }
+  }
+}
+
+const renderMindmap = async () => {
+  try {
+    if (!agentResource.value?.content?.mindmap) {
+      throw new Error('No mindmap data available')
+    }
+
+    const definition = generateMermaidDefinition(agentResource.value.content.mindmap)
+
+    if (!mindmapRef.value) {
+      return
+    }
+
+    mindmapRef.value.innerHTML = '<div id="mermaid-chart-container" class="w-full h-full"></div>'
+    const container = document.getElementById('mermaid-chart-container')
+    if (!container) {
+      return
+    }
+
+    container.innerHTML = ''
+
+    // @ts-ignore - mermaid is loaded from CDN
+    const renderResult = await window.mermaid.render('mindmap-chart-' + Date.now(), definition)
+
+    let svgContent = ''
+    if (typeof renderResult === 'object' && 'svg' in renderResult) {
+      svgContent = renderResult.svg
+    } else if (typeof renderResult === 'string') {
+      svgContent = renderResult
+    } else {
+      throw new Error(`Unexpected return type: ${typeof renderResult}`)
+    }
+
+    if (svgContent && svgContent.length > 0) {
+      container.innerHTML = svgContent
+
+      // 强制设置 SVG 样式
+      setTimeout(() => {
+        const svgElement = container.querySelector('svg')
+        if (svgElement) {
+          svgElement.style.width = '100%'
+          svgElement.style.height = 'auto'
+          svgElement.style.background = 'transparent'
+
+          // 设置所有文本的颜色
+          const texts = svgElement.querySelectorAll('text')
+          texts.forEach(text => {
+            text.style.fill = '#e2e8f0'
+            text.style.fontFamily = 'Inter, sans-serif'
+          })
+        }
+      }, 100)
+    } else {
+      throw new Error('SVG content is empty')
+    }
+
+    // 添加自定义样式
+    const style = document.createElement('style')
+    style.textContent = `
+      .mermaid svg {
+        background: transparent !important;
+        width: 100% !important;
+        height: auto !important;
+      }
+      .mermaid .node {
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3)) !important;
+      }
+      .mermaid .edge {
+        stroke: #4b5563 !important;
+      }
+      .mermaid text {
+        fill: #e2e8f0 !important;
+        font-family: Inter, sans-serif !important;
+      }
+    `
+    container.appendChild(style)
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    if (mindmapRef.value) {
+      mindmapRef.value.innerHTML = `<p class="text-red-500 text-sm">图表渲染失败: ${errorMessage}</p>`
+    }
+  }
+}
+
+// 生成 mermaid 定义
+const generateMermaidDefinition = (mindmap: any) => {
+  if (!mindmap || !mindmap.root) {
+    throw new Error('Invalid mindmap structure: missing root')
+  }
+
+  // 1. 处理根节点 (确保它是 root((内容)) 格式)
+  let rootNode = mindmap.root;
+  // 如果后端传来的 root 只是纯文字，包装它；如果是 root((...))，保持原样
+  if (!rootNode.includes('((')) {
+    rootNode = `root((${rootNode}))`;
+  }
+
+  let lines = ['mindmap', rootNode];
+
+  // 递归处理节点
+  const processNode = (nodes: any[], level: number) => {
+    const indent = '  '.repeat(level);
+
+    nodes.forEach((node) => {
+      if (!node.name) return;
+
+      // 【关键修复】：清洗节点名
+      // 1. 将双引号转义或替换为单引号
+      // 2. 移除节点名中可能存在的方括号 [ ]，防止解析错误
+      let safeName = node.name
+        .replace(/"/g, "'")    // 双引转单引
+        .replace(/\[/g, "")    // 移除左中括号
+        .replace(/\]/g, "");   // 移除右中括号
+
+      // 3. 统一使用 ["内容"] 包裹，这是 Mermaid 处理特殊字符最安全的方式
+      lines.push(`${indent}["${safeName}"]`);
+
+      if (node.children && Array.isArray(node.children)) {
+        processNode(node.children, level + 1);
+      }
+    });
+  };
+
+  if (mindmap.children) {
+    processNode(mindmap.children, 1);
+  }
+
+  const definition = lines.join('\n') + '\n';
+  return definition;
+}
+
+// 全局的 mermaid 初始化状态
+let mermaidInitialized = false
+
+// 获取所有视频资源（从场景中提取嵌套的 video 类型资源）
+const allVideos = computed(() => {
+  if (!agentResource.value?.content?.scenes) return []
+  const videos = []
+  for (const scene of agentResource.value.content.scenes) {
+    if (scene.resources) {
+      for (const resource of scene.resources) {
+        if (resource.type === 'video') {
+          // 添加场景信息到视频
+          videos.push({
+            ...resource,
+            sceneTitle: scene.title,
+            sceneNumber: scene.scene_number
+          })
+        }
+      }
+    }
+  }
+  return videos
+})
 
 const messages = ref([
   {
@@ -29,37 +266,37 @@ const suggestions = ref<string[]>([])
 // 根据智能体角色生成不同的建议
 const generateSuggestions = () => {
   const suggestionMap: Record<string, string[]> = {
-    'Professor': [
+    'professor': [
       '解释这个概念的核心思想',
       '提供更多的例子说明',
       '总结关键要点',
       '与其他概念对比分析'
     ],
-    'Architect': [
+    'architect': [
       '优化思维导图结构',
       '添加更多分支内容',
       '调整层级关系',
       '提供可视化建议'
     ],
-    'Examiner': [
+    'examiner': [
       '生成更多练习题',
       '调整题目难度',
       '添加解析说明',
       '创建模拟测试'
     ],
-    'Director': [
+    'director': [
       '增加更多场景',
       '优化脚本文本',
       '调整时长分配',
       '提供视觉建议'
     ],
-    'Hacker': [
+    'hacker': [
       '优化代码结构',
       '添加注释说明',
       '创建测试用例',
       '改进性能'
     ],
-    'Reviewer': [
+    'reviewer': [
       '提高内容质量',
       '减少错误风险',
       '增强实用性',
@@ -67,7 +304,7 @@ const generateSuggestions = () => {
     ]
   }
 
-  suggestions.value = suggestionMap[props.agent.role] || [
+  suggestions.value = suggestionMap[props.agent.role.toLowerCase()] || [
     '深入解释',
     '优化内容',
     '添加例子',
@@ -101,11 +338,8 @@ const sendMessage = async () => {
   scrollToBottom()
 
   try {
-    // 模拟打字效果
     agentResponse.value = ''
     const response = await chatWithAgent(props.agent.id, { message: userQuery })
-
-    // 逐字显示 AI 回复
     await typeMessage(response.reply)
 
     messages.value.push({
@@ -137,24 +371,50 @@ const typeMessage = async (text: string) => {
   }
 }
 
-// 快速提问
 const askSuggestion = (question: string) => {
   input.value = question
   sendMessage()
 }
 
-// 格式化代码块
-const formatCode = (text: string) => {
-  if (props.agent.role === 'Hacker') {
-    return text.replace(/```/g, '').replace(/\n/g, '<br>')
+const copyToClipboard = async (text: string) => {
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch (err) {
+    console.error('Failed to copy:', err)
   }
-  return text
+}
+
+// 打开外部链接
+const openExternalLink = (url: string) => {
+  window.open(url, '_blank')
+}
+
+// 处理图片加载失败
+const handleImageError = (event: Event) => {
+  const img = event.target as HTMLImageElement
+  img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTggMTZWN0M1IDE5Ljc1IDIwLjY1IDUgMTYgNEM2IDI5LjIxIDAgNCAyLjIxIDRDNC44NSAxNiAxNCAxOS41NSAxNCAxNlYxNloiIGZpbGw9IiM0NDQ0NDQiLz4KPC9zdmc+'
 }
 
 onMounted(() => {
   generateSuggestions()
   scrollToBottom()
+
+  // 如果是架构师智能体，尝试渲染思维导图
+  if (props.agent.role.toLowerCase() === 'architect' && agentResource.value?.content?.mindmap) {
+    nextTick(() => {
+      initAndRenderMindmap()
+    })
+  }
 })
+
+// 监听资源变化并渲染
+watch(() => agentResource.value, () => {
+  if (props.agent.role.toLowerCase() === 'architect' && agentResource.value?.content?.mindmap) {
+    nextTick(() => {
+      initAndRenderMindmap()
+    })
+  }
+}, { deep: true })
 </script>
 
 <template>
@@ -184,40 +444,181 @@ onMounted(() => {
       <div class="flex-[1.2] border-r border-white/10 p-8 overflow-y-auto bg-black/20 custom-scrollbar">
         <div class="max-w-3xl mx-auto">
           <div class="flex items-center gap-2 mb-6">
-            <MessageSquareQuote class="h-5 w-5 text-blue-500" />
+            <FileText class="h-5 w-5 text-blue-500" />
             <span class="text-xs font-bold text-slate-500 uppercase">{{ agent.role }} 专家产出</span>
           </div>
 
-          <!-- 根据角色显示不同格式的预览 -->
-          <div v-if="agent.role === 'Hacker'" class="bg-[#1e1e1e] rounded-2xl border border-white/10 p-6 font-mono text-sm">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-green-400 font-semibold">{{ topic }} - 代码实现</h3>
-              <Button variant="ghost" size="sm" class="text-xs text-green-400 hover:text-green-300">
-                <Code2 class="w-3 h-3 mr-1" />
-                运行
-              </Button>
+          <!-- Professor: 文档 -->
+          <div v-if="agent.role.toLowerCase() === 'professor' && agentResource?.content?.sections" class="space-y-6 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-blue-400">{{ agentResource.content.title }}</h3>
+            <div v-for="section in agentResource.content.sections" :key="section.heading" class="prose prose-invert max-w-none">
+              <h4 class="text-lg text-blue-300 mt-6 mb-3">{{ section.heading }}</h4>
+              <div v-if="section.subsections" class="ml-4 space-y-4">
+                <div v-for="subsection in section.subsections" :key="subsection.subheading" class="border-l-2 border-white/10 pl-4">
+                  <h5 class="text-base text-blue-300 mt-4 mb-2">{{ subsection.subheading }}</h5>
+                  <p class="text-slate-300 leading-relaxed text-sm">{{ subsection.body }}</p>
+                </div>
+              </div>
+              <p v-else class="text-slate-300 leading-relaxed">{{ section.body }}</p>
             </div>
-            <pre class="text-green-400"><code># 正在与 {{ agent.name }} 协作开发...
-# 已根据对话实时更新代码
-def generate_solution():
-    """自动生成的解决方案"""
-    return optimized_code</code></pre>
           </div>
-          <div v-else class="bg-[#1e1e1e] rounded-2xl border border-white/10 p-6">
-            <div class="flex items-center justify-between mb-4">
-              <h3 class="text-blue-400 font-semibold">{{ topic }} - {{ agent.role }}分析</h3>
-              <Button variant="ghost" size="sm" class="text-xs text-blue-400 hover:text-blue-300">
-                <FileText class="w-3 h-3 mr-1" />
-                导出
-              </Button>
+
+          <!-- Architect: 思维导图 -->
+          <div v-else-if="agent.role.toLowerCase() === 'architect'" class="bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-orange-400 mb-4">{{ topic }} - 知识图谱</h3>
+            <div v-if="agentResource?.content?.mindmap" ref="mindmapRef" class="min-h-[400px] bg-white/5 rounded-xl border border-dashed border-white/10">
+              <p class="text-slate-500 text-sm p-4">正在加载思维导图...</p>
             </div>
-            <div class="prose prose-invert max-w-none text-sm">
-              <p class="text-slate-400">AI 专家正在根据您的对话实时优化内容...</p>
-              <div class="h-64 bg-white/5 rounded-xl border border-dashed border-white/10 flex items-center justify-center italic text-slate-600">
-                <Brain class="w-8 h-8 mr-2 text-blue-500" />
-                内容将随着对话动态生成
+            <div v-else class="text-center py-16 text-slate-500">暂无思维导图数据</div>
+          </div>
+
+          <!-- Examiner: 测验 -->
+          <div v-else-if="agent.role.toLowerCase() === 'examiner' && quizQuestions.length > 0" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-pink-400 mb-4">知识测验</h3>
+            <div v-for="q in quizQuestions" :key="q._index" class="bg-white/5 rounded-xl border border-white/5 p-4">
+              <div class="flex justify-between items-start mb-3">
+                <Badge class="bg-blue-500/20 text-blue-400 border-none text-[10px]">单选题</Badge>
+                <span class="text-slate-600 text-[10px]">{{ q._difficulty }}</span>
+              </div>
+              <h5 class="text-slate-200 text-sm font-medium mb-3">Q{{ q._index + 1 }}: {{ q.question }}</h5>
+              <div class="space-y-2">
+                <div
+                  v-for="(opt, oIdx) in q.options"
+                  :key="oIdx"
+                  class="flex items-center gap-2 text-sm text-slate-400 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+                >
+                  <span class="text-[10px] w-4 text-right opacity-60">{{ q._optionLetters[oIdx] }}</span>
+                  <span>{{ opt }}</span>
+                  <CheckCircle2 v-if="oIdx === q.answer" class="h-3.5 w-3.5 text-green-400 ml-auto" />
+                </div>
+              </div>
+              <div class="mt-2 text-xs text-blue-300/80">解析：{{ q.explanation }}</div>
+            </div>
+          </div>
+
+          <!-- Director: 视频资源 -->
+          <div v-else-if="agent.role.toLowerCase() === 'director' && allVideos.length > 0" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-cyan-400 mb-4">视频教程推荐</h3>
+            <div class="grid gap-4">
+              <div v-for="video in allVideos" :key="video.title" class="group bg-white/5 rounded-xl overflow-hidden border border-white/5 hover:border-cyan-500/30 transition-all">
+                <!-- 视频封面 -->
+                <div class="relative aspect-video bg-black/40 overflow-hidden cursor-pointer" @click="openExternalLink(video.url)">
+                  <img :src="video.thumbnail" :alt="video.title" class="w-full h-full object-cover" @error="handleImageError">
+                  <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40"></div>
+                  <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="lg" class="h-16 w-16 rounded-full bg-cyan-600/90 hover:bg-cyan-500 text-white shadow-lg">
+                      <PlayCircle class="h-8 w-8" />
+                    </Button>
+                  </div>
+                  <!-- 时长标签 -->
+                  <div class="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-white text-xs">{{ video.duration }}</div>
+                  <!-- 平台标签 -->
+                  <div class="absolute top-3 left-3 px-2 py-1 bg-cyan-500/20 text-cyan-400 rounded text-xs">{{ video.platform }}</div>
+                </div>
+                <!-- 视频信息 -->
+                <div class="p-4">
+                  <h5 class="font-semibold text-white mb-2 line-clamp-2">{{ video.title }}</h5>
+                  <p class="text-slate-400 text-sm line-clamp-2">{{ video.description }}</p>
+                </div>
               </div>
             </div>
+          </div>
+
+          <!-- Director: 分镜脚本（当没有嵌套视频资源时） -->
+          <div v-else-if="agent.role.toLowerCase() === 'director' && agentResource?.content?.scenes" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-cyan-400 mb-4">视频分镜脚本</h3>
+            <div v-for="scene in agentResource.content.scenes" :key="scene.scene_number" class="bg-white/5 rounded-xl border border-white/5 p-4">
+              <div class="flex items-center gap-2 mb-2">
+                <Badge variant="outline" class="text-cyan-400 border-cyan-500/30 text-[10px]">场景 {{ scene.scene_number }}</Badge>
+                <span class="text-slate-500 text-xs">{{ scene.duration_seconds }}秒</span>
+              </div>
+              <h5 class="text-white font-medium text-sm mb-2">{{ scene.title }}</h5>
+              <p class="text-slate-400 text-xs leading-relaxed">{{ scene.visual }}</p>
+              <div class="mt-2 text-xs text-slate-500 italic">旁白：{{ scene.voiceover }}</div>
+            </div>
+          </div>
+
+          <!-- Hacker: 代码 -->
+          <div v-else-if="agent.role.toLowerCase() === 'hacker' && agentResource?.content" class="bg-[#1e1e1e] rounded-2xl border border-white/5 overflow-hidden">
+            <div class="bg-white/5 px-4 py-2 border-b border-white/5 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="flex gap-1.5 mr-2">
+                  <div class="h-2.5 w-2.5 rounded-full bg-red-500/20"></div>
+                  <div class="h-2.5 w-2.5 rounded-full bg-yellow-500/20"></div>
+                  <div class="h-2.5 w-2.5 rounded-full bg-green-500/20"></div>
+                </div>
+                <span class="text-xs text-slate-400 font-mono">{{ (agentResource.content.title || 'code').toLowerCase().replace(/\s+/g, '_') }}.py</span>
+              </div>
+              <Button variant="ghost" size="sm" class="h-6 text-xs gap-1 hover:bg-white/10 text-slate-400" @click="copyToClipboard(agentResource.content.code)">
+                <Copy class="h-3 w-3" /> Copy
+              </Button>
+            </div>
+            <pre class="p-4 text-sm leading-relaxed overflow-auto max-h-[400px]"><code class="hljs python">{{ agentResource.content.code }}</code></pre>
+            <div class="border-t border-white/5 px-4 py-3">
+              <p class="text-xs text-slate-400 mb-1">预期输出：</p>
+              <pre class="text-xs font-mono text-slate-300 bg-black/30 p-2 rounded overflow-x-auto">{{ agentResource.content.expected_output }}</pre>
+            </div>
+            <div v-if="agentResource.content.exercises?.length" class="border-t border-white/5 px-4 py-3">
+              <p class="text-xs text-slate-400 mb-1">扩展练习：</p>
+              <ul class="text-xs text-slate-300 space-y-1">
+                <li v-for="(exercise, idx) in agentResource.content.exercises" :key="idx" class="flex items-start gap-2">
+                  <span class="text-blue-400">•</span><span>{{ exercise }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- Reviewer: 审查报告 -->
+          <div v-else-if="agent.role.toLowerCase() === 'reviewer' && agentResource?.content" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <h3 class="text-xl font-bold text-red-400 mb-4">质量审查报告</h3>
+            <div class="bg-white/5 rounded-xl p-4 border border-white/5">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-sm text-white">幻觉风险</span>
+                <Badge
+                  :class="[
+                    agentResource.content.hallucination_risk === 'low' ? 'bg-green-500/20 text-green-400' :
+                    agentResource.content.hallucination_risk === 'medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                    'bg-red-500/20 text-red-400'
+                  ]"
+                  class="border-none text-[10px]"
+                >
+                  {{ riskLabel }}
+                </Badge>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">{{ agentResource.content.difficulty_assessment }}</p>
+            </div>
+            <div class="bg-white/5 rounded-xl p-4 border border-white/5">
+              <div class="flex justify-between items-center">
+                <span class="text-sm text-white">综合得分</span>
+                <span class="text-2xl font-bold text-blue-400">{{ agentResource.content.quality_score }}</span>
+              </div>
+              <div class="mt-2 w-full bg-white/10 rounded-full h-1.5">
+                <div
+                  class="bg-gradient-to-r from-blue-500 to-blue-600 h-1.5 rounded-full transition-all"
+                  :style="{ width: `${agentResource.content.quality_score}%` }"
+                ></div>
+              </div>
+            </div>
+            <div v-if="agentResource.content.suggestions?.length">
+              <h4 class="text-sm text-white mb-2">改进建议</h4>
+              <div class="space-y-2">
+                <div
+                  v-for="(suggestion, index) in agentResource.content.suggestions"
+                  :key="index"
+                  class="bg-white/5 rounded-lg p-3 border border-white/5"
+                >
+                  <div class="flex items-start gap-2">
+                    <span class="text-blue-400 mt-1">•</span>
+                    <p class="text-xs text-slate-300 leading-relaxed">{{ suggestion }}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 无数据时 -->
+          <div v-else class="flex items-center justify-center h-64 text-slate-500 bg-white/5 rounded-2xl border border-dashed border-white/10">
+            <p class="text-sm">等待生成资源数据...</p>
           </div>
         </div>
       </div>
@@ -250,8 +651,8 @@ def generate_solution():
             </div>
             <div :class="['max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed break-words',
               msg.role === 'assistant' ? 'bg-white/5 text-slate-300' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/20']">
-              <div v-if="msg.role === 'assistant' && agent.role === 'Hacker'" class="font-mono text-green-400">
-                {{ formatCode(msg.content) }}
+              <div v-if="msg.role === 'assistant' && agent.role.toLowerCase() === 'hacker'" class="font-mono text-green-400">
+                {{ msg.content }}
               </div>
               <div v-else>{{ msg.content }}</div>
               <div class="text-xs text-slate-500 mt-2">
@@ -299,13 +700,15 @@ def generate_solution():
           </div>
           <div class="flex justify-between items-center mt-3">
             <p class="text-xs text-slate-500">对话将实时更新左侧生成内容</p>
-            <Button variant="ghost" size="sm" class="text-xs text-slate-400 hover:text-white">
-              <Lightbulb class="w-3 h-3 mr-1" />
-              获取建议
-            </Button>
           </div>
         </div>
       </div>
     </main>
   </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar { width: 4px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #333; }
+</style>

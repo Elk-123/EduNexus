@@ -168,10 +168,11 @@ const handleAgentClick = (agent: any) => {
       leave-from-class="opacity-100 translate-y-0 scale-100"
       leave-to-class="opacity-0 translate-y-10 scale-95"
     >
-      <AgentDetailView 
-        v-if="selectedAgent" 
-        :agent="selectedAgent" 
+      <AgentDetailView
+        v-if="selectedAgent"
+        :agent="selectedAgent"
         :topic="currentTopic"
+        :resources="factoryStore.resources"
         @close="selectedAgent = null"
       />
     </Transition>
