@@ -81,6 +81,13 @@ const callDeepSeekAgent = async (convo: ChatMessage[]): Promise<void> => {
       isTyping.value = false
       isReviewing.value = true
     }
+
+    if (res.phase === 'completed' && res.collected_data) {
+      // 用户确认完成，自动提交并跳转首页
+      collectedData.value = res.collected_data
+      isTyping.value = false
+      await handleEnterSystem()
+    }
   } catch (e: any) {
     chatError.value = e?.response?.data?.detail || 'DeepSeek 对话请求失败，请重试'
   } finally {

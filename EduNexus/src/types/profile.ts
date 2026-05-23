@@ -40,6 +40,6 @@ export interface OnboardingChatRequest {
 export interface OnboardingChatResponse {
   message: string
   options: string[]
-  phase: 'questioning' | 'summarizing'
+  phase: 'questioning' | 'summarizing' | 'completed'
   collected_data: Record<string, string[]> | null
 }

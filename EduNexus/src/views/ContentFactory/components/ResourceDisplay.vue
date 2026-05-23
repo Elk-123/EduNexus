@@ -31,6 +31,7 @@ declare global {
 // Refs
 const codePre = ref<HTMLElement>()
 const codeElement = ref<HTMLElement>()
+const mindmapRef = ref<HTMLElement | null>(null)
 
 // 调试函数：检查组件状态
 const debugComponentState = () => {
@@ -56,9 +57,11 @@ interface Props {
   resources: GeneratedResource[]
   isGenerating: boolean
   topic: string
+  defaultTab?: string
 }
 
 const props = defineProps<Props>()
+const activeTab = ref(props.defaultTab || 'professor')
 
 // 调试：监听资源变化
 watch(() => props.resources, (newResources) => {
@@ -91,7 +94,7 @@ const copyToClipboard = async (text: string) => {
 }
 
 // 渲染 mermaid 图表
-const mindmapRef = ref<HTMLElement | null>(null)
+// const mindmapRef = ref<HTMLElement | null>(null)
 
 // 获取所有视频资源
 const getAllVideos = () => {
@@ -456,7 +459,7 @@ watch(() => hackerResource.value?.content?.code, (newCode, oldCode) => {
     <!-- 生成完成状态 -->
     <div v-else-if="props.resources.length > 0" class="flex-1 flex flex-col">
 
-      <Tabs defaultValue="professor" class="h-full flex flex-col">
+      <Tabs :default-value="activeTab" class="h-full flex flex-col">
         <TabsList class="w-full justify-start bg-transparent p-0 border-b border-white/10">
           <TabsTrigger value="professor" class="flex items-center gap-2 px-4 py-2 data-[state=active]:bg-transparent">
             <FileText class="h-4 w-4" />

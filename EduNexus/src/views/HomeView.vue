@@ -1,86 +1,114 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import {
-  BrainCircuit, Sparkles, Zap, Activity,
+  BrainCircuit, Sparkles,
   ChevronRight, FileText,
-  CheckCircle2, AlertCircle
+  CheckCircle2, AlertCircle,
+  Video, Code, HelpCircle, GitFork,
+  Calendar
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/authStore'
-import { useProfileStore } from '@/stores/profileStore'
 import { useDeliveryStore } from '@/stores/deliveryStore'
 
+const router = useRouter()
 const authStore = useAuthStore()
-const profileStore = useProfileStore()
 const deliveryStore = useDeliveryStore()
 
 const userName = computed(() => authStore.user?.username || '同学')
 
-const profileDimensions = computed(() => {
-  const p = profileStore.profileData
-  if (!p) return [
-    { label: '知识基础', value: '--' },
-    { label: '认知风格', value: '--', isTag: true },
-    { label: '易错偏好', value: '--', isTag: true },
-    { label: '学习目标', value: '--', isTag: true },
-    { label: '专注时长', value: '--' },
-    { label: '抗压值', value: '--' },
-  ]
-  return [
-    { label: '知识基础', value: p.knowledge_base_score },
-    { label: '认知风格', value: p.cognitive_style, isTag: true },
-    { label: '易错偏好', value: p.error_preference, isTag: true },
-    { label: '学习目标', value: p.learning_goals, isTag: true },
-    { label: '专注时长', value: `${p.focus_duration}min` },
-    { label: '抗压值', value: p.stress_resistance },
-  ]
-})
+const resourceTypes = [
+  {
+    id: 'document',
+    name: '系统文档',
+    icon: FileText,
+    color: 'text-blue-500',
+    bgColor: 'bg-blue-500/10',
+    description: '深度学习资料，系统化知识整理',
+    url: '/factory?tab=professor'
+  },
+  {
+    id: 'mindmap',
+    name: '知识图谱',
+    icon: GitFork,
+    color: 'text-purple-500',
+    bgColor: 'bg-purple-500/10',
+    description: '可视化知识结构，掌握核心关联',
+    url: '/factory?tab=architect'
+  },
+  {
+    id: 'quiz',
+    name: '实战测验',
+    icon: HelpCircle,
+    color: 'text-amber-500',
+    bgColor: 'bg-amber-500/10',
+    description: '随堂练习，检验学习成果',
+    url: '/factory?tab=examiner'
+  },
+  {
+    id: 'video',
+    name: '视频教程',
+    icon: Video,
+    color: 'text-rose-500',
+    bgColor: 'bg-rose-500/10',
+    description: '生动讲解，直观理解概念',
+    url: '/factory?tab=director'
+  },
+  {
+    id: 'code',
+    name: '代码实验',
+    icon: Code,
+    color: 'text-emerald-500',
+    bgColor: 'bg-emerald-500/10',
+    description: '动手实践，深入理解原理',
+    url: '/factory?tab=hacker'
+  },
+]
 
-const stressValue = computed(() => profileStore.profileData?.stress_resistance ?? 72)
-const focusDuration = computed(() => profileStore.profileData?.focus_duration ?? 45)
+const getResourceIcon = (type: string) => {
+  switch (type) {
+    case 'video': return Video
+    case 'code': return Code
+    case 'quiz': return HelpCircle
+    default: return FileText
+  }
+}
+
+const getResourceIconColor = (type: string) => {
+  switch (type) {
+    case 'video': return 'bg-rose-500/10 text-rose-500'
+    case 'code': return 'bg-emerald-500/10 text-emerald-500'
+    case 'quiz': return 'bg-amber-500/10 text-amber-500'
+    default: return 'bg-blue-500/10 text-blue-500'
+  }
+}
+
+const fallbackResources = [
+  { title: 'Transformer 注意力机制', resource_type: 'document', description: '深入理解注意力机制的核心概念' },
+  { title: '知识图谱导论', resource_type: 'mindmap', description: '可视化知识结构导图' },
+  { title: '机器学习基础测试', resource_type: 'quiz', description: '3道选择题检验学习成果' },
+  { title: 'Python 神经网络实战', resource_type: 'code', description: '动手实现简单的神经网络' },
+]
 
 onMounted(() => {
-  profileStore.fetchProfile()
   deliveryStore.fetchAll()
 })
 </script>
 
 <template>
   <div class="space-y-8 pb-10">
-    <!-- 1. 顶部：破冰智能体反馈 & 核心指标 -->
-    <section class="flex flex-col md:flex-row gap-6 items-end justify-between">
-      <div>
-        <div class="flex items-center gap-2 text-blue-500 mb-2">
-          <Sparkles class="w-4 h-4" />
-          <span class="text-xs font-bold uppercase tracking-[0.2em]">Ice-breaker Agent Feedback</span>
-        </div>
-        <h1 class="text-4xl font-bold text-white tracking-tight">
-          你好, {{ userName }} <span class="text-zinc-500 text-2xl font-normal">/ 准备好开始今天的学习了吗？</span>
-        </h1>
-      </div>
-      <!-- 快速状态指标 -->
-      <div class="flex gap-4">
-        <div class="bg-[#131314] border border-[#303134] px-4 py-2 rounded-2xl flex items-center gap-3">
-          <Activity class="w-4 h-4 text-orange-500" />
-          <div>
-            <p class="text-[10px] text-zinc-500 uppercase tracking-wider">当前抗压值</p>
-            <p class="text-sm font-bold text-white">{{ stressValue }}% (稳定)</p>
-          </div>
-        </div>
-        <div class="bg-[#131314] border border-[#303134] px-4 py-2 rounded-2xl flex items-center gap-3">
-          <Zap class="w-4 h-4 text-yellow-500" />
-          <div>
-            <p class="text-[10px] text-zinc-500 uppercase tracking-wider">专注时长</p>
-            <p class="text-sm font-bold text-white">{{ focusDuration }}min</p>
-          </div>
-        </div>
-      </div>
+    <!-- 1. 顶部：欢迎标题 -->
+    <section>
+      <h1 class="text-4xl font-bold text-white tracking-tight">
+        你好, {{ userName }} <span class="text-zinc-500 text-2xl font-normal">/ 准备好开始今天的学习了吗？</span>
+      </h1>
     </section>
 
     <!-- 2. 中间主要内容：Bento 布局 -->
     <div class="grid grid-cols-12 gap-6">
       
-      <!-- 左侧：知识图谱动态路由 (DAG 展示区) -->
+      <!-- 左侧：知识图谱动态路由 (三阶段展示) -->
       <div class="col-span-12 lg:col-span-8 bg-[#131314] border border-[#303134] rounded-[2.5rem] p-8 relative overflow-hidden group">
         <div class="flex justify-between items-start mb-8">
           <div>
@@ -88,50 +116,55 @@ onMounted(() => {
               <BrainCircuit class="w-5 h-5 text-blue-500" />
               动态规划路径：人工智能导论
             </h3>
-            <p class="text-zinc-500 text-sm mt-1">Planner Agent 已根据你的"线代基础"自动插入补充节点</p>
+            <p class="text-zinc-500 text-sm mt-1">基础储备 → 核心模型 → 前沿进阶</p>
           </div>
-          <Button variant="outline" class="rounded-xl border-[#303134] bg-transparent text-xs">查看全量图谱</Button>
+          <Button variant="outline" class="rounded-xl border-[#303134] bg-transparent text-xs" @click="router.push('/path')">查看全量图谱</Button>
         </div>
 
-        <!-- 模拟 DAG 节点展示 -->
-        <div class="flex items-center justify-between px-10 py-10 relative">
-          <!-- 背景线 -->
-          <div class="absolute top-1/2 left-20 right-20 h-px bg-dashed bg-zinc-800 -translate-y-1/2 z-0"></div>
-          
-          <div class="flex flex-col items-center gap-3 z-10 opacity-50">
-            <div class="w-12 h-12 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-zinc-500">
-              <CheckCircle2 class="w-6 h-6" />
+        <!-- 三阶段节点展示 -->
+        <div class="flex items-center justify-between px-16 py-10 relative">
+          <!-- 背景连接线 -->
+          <div class="absolute top-1/2 left-32 right-32 h-1 bg-gradient-to-r from-emerald-500/30 via-blue-500/50 to-zinc-700/30 -translate-y-1/2 z-0 rounded-full"></div>
+
+          <!-- 阶段一：基础储备 -->
+          <div class="flex flex-col items-center gap-4 z-10">
+            <div class="w-14 h-14 rounded-full bg-emerald-600/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
+              <CheckCircle2 class="w-7 h-7" />
             </div>
-            <span class="text-xs font-medium">线性代数</span>
+            <div class="text-center">
+              <span class="text-sm font-bold text-emerald-400">基础储备</span>
+              <p class="text-[10px] text-zinc-500 mt-1">数学 · 编程 · 线代</p>
+            </div>
           </div>
 
-          <div class="flex flex-col items-center gap-3 z-10">
+          <!-- 阶段二：核心模型 -->
+          <div class="flex flex-col items-center gap-4 z-10">
             <div class="w-16 h-16 rounded-full bg-blue-600 border-4 border-blue-900/50 flex items-center justify-center text-white shadow-[0_0_30px_rgba(37,99,235,0.4)] animate-pulse">
-              <Activity class="w-8 h-8" />
+              <BrainCircuit class="w-8 h-8" />
             </div>
-            <span class="text-sm font-bold text-white underline underline-offset-8 decoration-blue-500">梯度下降算法</span>
+            <div class="text-center">
+              <span class="text-sm font-bold text-white underline underline-offset-4 decoration-blue-500">核心模型</span>
+              <p class="text-[10px] text-zinc-500 mt-1">ML · DL · CV · NLP</p>
+            </div>
           </div>
 
-          <div class="flex flex-col items-center gap-3 z-10">
-            <div class="w-12 h-12 rounded-full bg-[#0b0b0b] border border-zinc-800 flex items-center justify-center text-zinc-700">
-              <ChevronRight class="w-6 h-6" />
+          <!-- 阶段三：前沿进阶 -->
+          <div class="flex flex-col items-center gap-4 z-10 opacity-60">
+            <div class="w-14 h-14 rounded-full bg-[#0b0b0b] border border-zinc-700 flex items-center justify-center text-zinc-500">
+              <ChevronRight class="w-7 h-7" />
             </div>
-            <span class="text-xs font-medium text-zinc-600">反向传播</span>
-          </div>
-
-          <div class="flex flex-col items-center gap-3 z-10">
-            <div class="w-12 h-12 rounded-full bg-[#0b0b0b] border border-zinc-800 flex items-center justify-center text-zinc-700">
-              <ChevronRight class="w-6 h-6" />
+            <div class="text-center">
+              <span class="text-xs font-medium text-zinc-400">前沿进阶</span>
+              <p class="text-[10px] text-zinc-600 mt-1">LLM · RAG · Agent</p>
             </div>
-            <span class="text-xs font-medium text-zinc-600">神经网络</span>
           </div>
         </div>
 
-        <!-- 悬浮提示：动态路由逻辑说明 -->
+        <!-- 提示：路径设计说明 -->
         <div class="mt-8 bg-blue-500/5 border border-blue-500/10 rounded-2xl p-4 flex items-start gap-3">
           <AlertCircle class="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
           <p class="text-xs text-blue-200/70 leading-relaxed">
-            检测到当前节点难度较大，已由 <span class="text-blue-400 font-bold">Hacker Agent</span> 自动生成配套代码实验室。
+            按照三大阶段设计：数学编程打基础，机器学习学核心，大模型进前沿。
           </p>
         </div>
       </div>
@@ -142,54 +175,73 @@ onMounted(() => {
           <Sparkles class="w-5 h-5 text-purple-500" />
           内容制造车间
         </h3>
-        
-        <div class="space-y-4 flex-1">
-          <div v-if="deliveryStore.todayResources.length === 0"
-            class="flex flex-col items-center justify-center h-full text-zinc-500 text-sm gap-2">
-            <FileText class="w-8 h-8 text-zinc-700" />
-            <p>暂无生成资源</p>
-            <p class="text-[10px]">前往"资源生成"页面创建内容</p>
-          </div>
-          <div v-for="(item, idx) in deliveryStore.todayResources.slice(0, 5)" :key="idx"
-            class="flex items-center justify-between p-4 rounded-2xl bg-[#0b0b0b]/50 border border-[#303134] hover:border-zinc-700 transition-all cursor-pointer">
-            <div class="flex items-center gap-4">
-              <div :class="`p-2 rounded-lg bg-zinc-900 text-blue-500`">
-                <component :is="FileText" class="w-5 h-5" />
-              </div>
-              <div>
-                <p class="text-sm font-bold text-zinc-200 line-clamp-1 max-w-[180px]">{{ item.title }}</p>
-                <p class="text-[10px] text-zinc-500">{{ item.resource_type }}</p>
-              </div>
+
+        <div class="grid grid-cols-2 gap-3 flex-1">
+          <div
+            v-for="resource in resourceTypes"
+            :key="resource.id"
+            @click="router.push(resource.url)"
+            class="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-[#0b0b0b]/50 border border-[#303134] hover:border-zinc-700 hover:bg-[#0b0b0b] transition-all cursor-pointer group"
+          >
+            <div :class="`p-3 rounded-xl ${resource.bgColor} group-hover:scale-110 transition-transform`">
+              <component :is="resource.icon" :class="`w-6 h-6 ${resource.color}`" />
             </div>
-            <div class="flex flex-col items-end">
-              <span v-if="item.status === 'completed'" class="text-[10px] text-emerald-500 font-bold uppercase tracking-tighter italic">Ready</span>
-              <span v-else-if="item.status === 'current'" class="flex items-center gap-1">
-                <span class="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
-                <span class="text-[10px] text-zinc-600 font-bold uppercase">Active</span>
-              </span>
-              <span v-else class="text-[10px] text-zinc-600 font-bold uppercase">Locked</span>
+            <div class="text-center">
+              <span class="text-xs font-medium text-zinc-300 group-hover:text-white transition-colors">{{ resource.name }}</span>
+              <p class="text-[10px] text-zinc-500 mt-1 group-hover:text-zinc-400 transition-colors">{{ resource.description }}</p>
             </div>
           </div>
         </div>
-
-        <Button class="w-full mt-6 bg-white text-black hover:bg-zinc-200 rounded-xl h-12 font-bold transition-all active:scale-95">
-          进入沉浸式学习模式
-        </Button>
       </div>
 
-      <!-- 下方左侧：6 维画像雷达图占位 -->
-      <div class="col-span-12 lg:col-span-4 bg-[#131314] border border-[#303134] rounded-[2.5rem] p-8">
-        <h3 class="text-lg font-bold text-white mb-6">自主画像 (Ice-breaker Result)</h3>
-        <div class="grid grid-cols-2 gap-4">
-          <div v-for="dim in profileDimensions" :key="dim.label" class="bg-[#0b0b0b] p-3 rounded-xl border border-[#202022]">
-            <p class="text-[10px] text-zinc-500 uppercase font-bold">{{ dim.label }}</p>
-            <p v-if="!dim.isTag" class="text-xl font-bold text-white mt-1">{{ dim.value }}</p>
-            <p v-else class="text-xs font-bold text-blue-400 mt-2 bg-blue-500/10 px-2 py-1 rounded inline-block">{{ dim.value }}</p>
-          </div>
+      <!-- 下方左侧：资源推送预览 -->
+      <div class="col-span-12 lg:col-span-4 bg-[#131314] border border-[#303134] rounded-[2.5rem] p-8 flex flex-col">
+        <h3 class="text-lg font-bold text-white mb-6 flex items-center gap-2">
+          <Calendar class="w-5 h-5 text-orange-500" />
+          今日资源推荐
+        </h3>
+
+        <!-- 真实数据或 fallback 预览 -->
+        <div class="space-y-3 flex-1">
+          <template v-if="deliveryStore.todayResources.length > 0">
+            <div
+              v-for="(item, idx) in deliveryStore.todayResources.slice(0, 4)"
+              :key="idx"
+              @click="router.push('/delivery')"
+              class="flex items-center gap-3 p-3 rounded-xl bg-[#0b0b0b] border border-[#202022] hover:border-zinc-700 transition-all cursor-pointer group"
+            >
+              <div :class="`p-2 rounded-lg ${getResourceIconColor(item.resource_type)}`">
+                <component :is="getResourceIcon(item.resource_type)" class="w-4 h-4" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-zinc-200 truncate">{{ item.title }}</p>
+                <p class="text-[10px] text-zinc-500">{{ item.resource_type }}</p>
+              </div>
+              <ChevronRight class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+            </div>
+          </template>
+          <template v-else>
+            <div
+              v-for="(item, idx) in fallbackResources"
+              :key="idx"
+              @click="router.push('/delivery')"
+              class="flex items-center gap-3 p-3 rounded-xl bg-[#0b0b0b] border border-[#202022] hover:border-zinc-700 transition-all cursor-pointer group"
+            >
+              <div :class="`p-2 rounded-lg ${getResourceIconColor(item.resource_type)}`">
+                <component :is="getResourceIcon(item.resource_type)" class="w-4 h-4" />
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-zinc-200 truncate">{{ item.title }}</p>
+                <p class="text-[10px] text-zinc-500">{{ item.description }}</p>
+              </div>
+              <ChevronRight class="w-4 h-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+            </div>
+          </template>
         </div>
-        <div class="mt-6 p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800 italic text-[11px] text-zinc-500 leading-relaxed text-center">
-          "画像将随着你的每一次答疑和练习实时演化"
-        </div>
+
+        <Button variant="outline" class="w-full mt-4 rounded-xl border-[#303134] bg-transparent text-xs" @click="router.push('/delivery')">
+          查看全部资源
+        </Button>
       </div>
 
       <!-- 下方右侧：学情诊断报告摘要 -->

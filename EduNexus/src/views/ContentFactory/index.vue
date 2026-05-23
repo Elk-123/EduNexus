@@ -1,6 +1,7 @@
 <!-- src/views/ContentFactory/index.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import {
   BrainCircuit, FileText, GitFork, ClipboardCheck, Video, Code2, ShieldCheck
 } from 'lucide-vue-next'
@@ -12,7 +13,21 @@ import AgentDetailView from './components/AgentDetailView.vue'
 import { useFactoryStore } from '@/stores/factoryStore'
 import apiClient from '@/api/client'
 
+const route = useRoute()
 const factoryStore = useFactoryStore()
+
+// 从URL参数获取默认标签
+const defaultTab = computed(() => {
+  const tab = route.query.tab as string
+  const tabMapping: Record<string, string> = {
+    'professor': 'professor',
+    'architect': 'mindmap',
+    'examiner': 'quiz',
+    'director': 'video',
+    'hacker': 'code'
+  }
+  return tabMapping[tab] || 'professor'
+})
 
 // 智能体定义
 const agentDefs = [
@@ -139,6 +154,7 @@ const handleAgentClick = (agent: any) => {
           :resources="factoryStore.resources"
           :isGenerating="factoryStore.isGenerating"
           :topic="factoryStore.currentTopic"
+          :defaultTab="defaultTab"
         />
       </section>
     </main>
