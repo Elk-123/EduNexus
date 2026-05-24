@@ -1,5 +1,6 @@
 import asyncio
 import json
+import requests
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -17,9 +18,11 @@ class ContentGenerator:
         """初始化内容生成器"""
         # AgentOrchestrator 将在使用时传入 db
         self.orchestrator = None
-        self.gemini_model = None
-        # if settings.GOOGLE_API_KEY:
-            # genai model initialization removed for now - focusing on mock data
+        self.deepseek_api_url = "https://api.deepseek.com/v1/chat/completions"
+        self.deepseek_headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {settings.DEEPSEEK_API_KEY}"
+        }
 
     async def generate_content(self, request: GenerateRequest, student_id: str, db: AsyncSession = None) -> Dict[str, str]:
         """
@@ -132,19 +135,64 @@ class ContentGenerator:
 
             return result
 
-    async def chat_with_agent(self, task_id: str, agent_id: str, message: str) -> Dict[str, str]:
+    async def chat_with_agent(self, agent_id: str, message: str, context: str = "") -> Dict[str, str]:
         """
-        与特定智能体对话
+        与特定智能体对话，使用DeepSeek API
         """
         try:
-            # 这里应该实现与特定智能体的对话逻辑
-            # 目前返回一个简单的响应
+            # 定义不同智能体的系统提示
+            system_prompts = {
+                "professor": "你是一位资深的教育学教授，专门深入浅出地解释复杂概念。请用专业但易懂的语言回答问题。",
+                "architect": "你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。请提供结构化的思考和建议。",
+                "examiner": "你是一位专业考试设计专家，擅长设计高质量的测验题和评估学习效果。请提供精准的反馈。",
+                "director": "你是一位教育视频导演，设计生动的可视化教学内容。请提供创意性的建议和指导。",
+                "hacker": "你是一位实战派技术专家，提供可运行的代码示例和实践指导。请提供具体的技术解决方案。",
+                "reviewer": "你是一位教育内容评审专家，对生成的内容进行质量评估。请提供专业的改进建议。"
+            }
+
+            system_prompt = system_prompts.get(agent_id, "你是一位专业的教育智能体助手。")
+
+
+            # 构建完整的上下文
+            full_context = f"当前讨论主题：{context}\n" if context else ""
+
+            payload = {
+                "model": settings.DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"{full_context}用户问题：{message}"}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 2000  # 增加到2000 tokens
+            }
+
+
+            # 调用DeepSeek API
+            response = requests.post(
+                self.deepseek_api_url,
+                headers=self.deepseek_headers,
+                json=payload,
+                timeout=30
+            )
+            response.raise_for_status()
+
+
+            response_data = response.json()
+            reply = response_data["choices"][0]["message"]["content"]
+
+
             return {
-                "reply": f"[{agent_id}] 收到消息: {message}",
+                "reply": reply,
                 "agent_type": agent_id
             }
+
         except Exception as e:
-            raise Exception(f"对话失败: {str(e)}")
+            print(f"DeepSeek API 调用失败: {str(e)}")
+            # 回退到mock数据
+            return {
+                "reply": f"关于「{message}」，作为{agent_id}智能体，我目前无法连接到AI服务。请稍后再试，或者尝试其他问题。",
+                "agent_type": agent_id
+            }
 
     def _call_gemini_api(self, prompt: str) -> str:
         """
@@ -769,18 +817,187 @@ if __name__ == "__main__":
 
     async def generate_for_agent(self, agent_type: str, topic: str, profile: Dict = None) -> Dict:
         """
-        为特定智能体生成内容
+        为特定智能体生成内容，使用DeepSeek API
         """
-        # 直接使用回退数据，不调用 Gemini API
-        # if self.gemini_model and topic != "Transformer 架构中的注意机制":
-        #     try:
-        #         content = await self._generate_content_with_gemini(agent_type, topic)
-        #         return content
-        #     except:
-        #         pass  # 如果 Gemini 生成失败，使用回退数据
+        try:
+            # 定义不同智能体的生成提示
+            prompts = {
+                "professor": f"""你是一位资深的教育学教授，专门深入浅出地解释复杂概念。
 
-        # 使用回退数据
-        return self._get_fallback(agent_type, topic)
+主题：{topic}
+
+请生成一份详细的教学文档，包含：
+1. 标题（简洁明了）
+2. 4-6个主要章节，每章节包含：
+   - 清晰的章节标题
+   - 详细的解释（300-500字）
+   - 具体的例子
+   - 与其他概念的关联
+
+请确保内容深入浅出，适合有一定基础的学习者。""",
+
+                "architect": f"""你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。
+
+主题：{topic}
+
+请创建一个思维导图，包含：
+1. 根节点（主题名称）
+2. 3-4个主要分支
+3. 每个分支下有3-4个子节点
+4. 每个子节点下可以有2-3个细节节点
+
+使用JSON格式返回，结构为：
+{{
+    "mindmap": {{
+        "root": "主题名称",
+        "children": [
+            {{
+                "name": "分支名称",
+                "children": [
+                    {{
+                        "name": "子节点名称",
+                        "children": [
+                            {{"name": "细节名称"}}
+                        ]
+                    }}
+                ]
+            }}
+        ]
+    }}
+}}""",
+
+                "examiner": f"""你是一位专业考试设计专家，根据给定主题设计高质量的测验题。
+
+主题：{topic}
+
+请设计3道选择题，每道题包含：
+1. 一个核心问题
+2. 4个选项（A、B、C、D）
+3. 正确答案的序号（0-3）
+4. 详细的解释
+
+问题应该覆盖主题的关键概念，难度适中，能够检验学习者的理解程度。
+
+使用JSON格式返回：
+{{
+    "questions": [
+        {{
+            "question": "问题描述",
+            "options": ["选项A", "选项B", "选项C", "选项D"],
+            "answer": 0,
+            "explanation": "详细解释"
+        }}
+    ]
+}}""",
+
+                "director": f"""你是一位教育视频导演，设计生动的可视化教学内容。
+
+主题：{topic}
+
+请设计4个教学场景，每道场景包含：
+1. 场景编号（1-4）
+2. 场景标题
+3. 视觉描述（画面内容）
+4. 旁白（口语化的讲解）
+5. 时长（秒）
+6. 1-2个相关资源（YouTube视频等）
+
+使用JSON格式返回：
+{{
+    "scenes": [
+        {{
+            "scene_number": 1,
+            "title": "场景标题",
+            "visual": "视觉描述",
+            "voiceover": "旁白内容",
+            "duration_seconds": 30,
+            "resources": [
+                {{
+                    "type": "video",
+                    "title": "视频标题",
+                    "description": "视频描述",
+                    "thumbnail": "https://example.com/thumbnail.jpg",
+                    "url": "https://youtube.com/watch?v=example",
+                    "duration": "10:00",
+                    "platform": "YouTube"
+                }}
+            ]
+        }}
+    ]
+}}""",
+
+                "hacker": f"""你是一位实战派技术专家，提供可运行的代码示例。
+
+主题：{topic}
+
+请创建一个Python代码实验，包含：
+1. 有意义的标题
+2. 简短描述（50-100字）
+3. 完整可运行的代码（500-800字）
+4. 预期输出结果
+5. 2-3个扩展练习
+
+使用JSON格式返回：
+{{
+    "title": "标题",
+    "description": "描述",
+    "code": "完整代码",
+    "expected_output": "预期输出",
+    "exercises": ["练习1", "练习2"]
+}}""",
+
+                "reviewer": f"""你是一位教育内容评审专家，对生成的内容进行质量评估。
+
+主题：{topic}
+
+请对上述所有生成的内容进行评审，返回：
+1. 幻觉风险评级（low/medium/high）
+2. 质量评分（0-100）
+3. 改进建议（2-3条）
+4. 难度评估（简要说明）
+
+使用JSON格式返回：
+{{
+    "hallucination_risk": "low",
+    "quality_score": 85,
+    "suggestions": ["建议1", "建议2"],
+    "difficulty_assessment": "难度评估"
+}}"""
+            }
+
+            prompt = prompts.get(agent_type, f"请关于{topic}生成相关内容")
+
+            payload = {
+                "model": settings.DEEPSEEK_MODEL,
+                "messages": [
+                    {"role": "system", "content": "你是一位专业的教育内容生成专家。请严格按照指定的格式和要求生成内容。"},
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 4000  # 增加到4000 tokens
+            }
+
+            response = requests.post(
+                self.deepseek_api_url,
+                headers=self.deepseek_headers,
+                json=payload,
+                timeout=60
+            )
+            response.raise_for_status()
+            response_data = response.json()
+            content_text = response_data["choices"][0]["message"]["content"]
+            # 尝试解析JSON响应
+            try:
+                content = json.loads(content_text)
+                return content
+            except json.JSONDecodeError:
+                print(f"JSON解析失败，使用原始文本: {content_text[:100]}...")
+                return {"content": content_text}
+
+        except Exception as e:
+            print(f"DeepSeek API 调用失败: {str(e)}")
+            # 回退到现有的mock数据
+            return self._get_fallback(agent_type, topic)
 
 
 generator = ContentGenerator()

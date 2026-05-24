@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { chatWithAgent } from '@/api/factory'
 import type { GeneratedResource } from '@/types/factory'
+import ManagerPreview from './ManagerPreview.vue'
 
 const props = defineProps<{
   agent: any
@@ -249,10 +250,52 @@ const allVideos = computed(() => {
   return videos
 })
 
+// 构建专家上下文信息
+const buildExpertContext = () => {
+  let contextInfo = ''
+
+  switch (props.agent.role.toLowerCase()) {
+    case 'professor':
+      contextInfo = agentResource.value?.content?.title
+        ? `我已为"${props.topic}"生成了教学文档《${agentResource.value.content.title}》，包含多个章节和详细内容。`
+        : '我已为你生成了教学文档内容。'
+      break
+    case 'architect':
+      contextInfo = agentResource.value?.content?.mindmap?.root
+        ? `我已为"${props.topic}"构建了思维导图，根节点为"${agentResource.value.content.mindmap.root}"，包含多个分支和层级结构。`
+        : '我已为你构建了知识图谱思维导图。'
+      break
+    case 'examiner':
+      contextInfo = quizQuestions.value.length > 0
+        ? `我已为"${props.topic}"生成了${quizQuestions.value.length}道测验题目，涵盖不同难度级别，包含详细解析。`
+        : '我已为你生成了知识测验题目。'
+      break
+    case 'director':
+      contextInfo = allVideos.value.length > 0
+        ? `我已为"${props.topic}"规划了视频分镜，包含${allVideos.value.length}个场景，每个场景都有视觉描述、旁白和时长安排。`
+        : '我已为你规划了视频分镜脚本。'
+      break
+    case 'hacker':
+      contextInfo = agentResource.value?.content?.code
+        ? `我已为"${props.topic}"编写了代码示例，包含完整实现、预期输出和扩展练习。`
+        : '我已为你编写了代码示例。'
+      break
+    case 'reviewer':
+      contextInfo = agentResource.value?.content?.quality_score !== undefined
+        ? `我对"${props.topic}"的生成内容进行了质量审查，综合评分为${agentResource.value.content.quality_score}分，幻觉风险为${riskLabel.value}。`
+        : '我已对生成内容进行了质量审查。'
+      break
+    default:
+      contextInfo = `我已为"${props.topic}"生成了相关内容。`
+  }
+
+  return contextInfo
+}
+
 const messages = ref([
   {
     role: 'assistant',
-    content: `你好！我是你的${props.agent.name}专家。关于"${props.topic}"，我已经为你生成了初步内容。现在我们可以一起深入探讨、优化和改进。你想从哪个方面开始？`,
+    content: `你好！我是${props.agent.name}专家。${buildExpertContext()} 有什么问题或需要优化的地方，请随时告诉我！`,
     timestamp: new Date().toISOString()
   }
 ])
@@ -415,6 +458,36 @@ watch(() => agentResource.value, () => {
     })
   }
 }, { deep: true })
+
+// Markdown 渲染函数
+const renderMarkdown = (text: string): string => {
+  if (!text) return ''
+
+  // 处理标题
+  let html = text
+    .replace(/^# (.*)$/gm, '<h1 class="text-xl font-bold text-blue-400 mt-6 mb-3">$1</h1>')
+    .replace(/^## (.*)$/gm, '<h2 class="text-lg font-semibold text-blue-300 mt-5 mb-2">$1</h2>')
+    .replace(/^### (.*)$/gm, '<h3 class="text-base font-medium text-blue-200 mt-4 mb-1">$1</h3>')
+
+  // 处理粗体
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+
+  // 处理斜体
+  html = html.replace(/\*(.*?)\*/g, '<em>$1</em>')
+
+  // 处理列表项
+  html = html.replace(/^- (.*?)(?=\n|$)/gm, '<li class="ml-4 text-slate-300">$1</li>')
+
+  // 处理段落和换行
+  html = html.replace(/\n\n/g, '</p><p class="text-slate-300 leading-relaxed">')
+  html = html.replace(/\n/g, '<br/>')
+  html = `<p class="text-slate-300 leading-relaxed">${html}</p>`
+
+  // 处理无序列表
+  html = html.replace(/<li>(.*?)<\/li>/gs, '<div class="flex items-start gap-2 mt-1"><span class="text-blue-400 mt-1">•</span><span class="text-slate-300">$1</span></div>')
+
+  return html
+}
 </script>
 
 <template>
@@ -616,6 +689,17 @@ watch(() => agentResource.value, () => {
             </div>
           </div>
 
+          <!-- Manager: 主控中枢预览 -->
+          <div v-else-if="agent.role.toLowerCase() === 'manager'" class="h-full p-6">
+            <ManagerPreview
+              :topic="topic"
+              :isGenerating="true"
+              :agentsStatus="{}"
+              :resources="resources"
+              :logs="[]"
+            />
+          </div>
+
           <!-- 无数据时 -->
           <div v-else class="flex items-center justify-center h-64 text-slate-500 bg-white/5 rounded-2xl border border-dashed border-white/10">
             <p class="text-sm">等待生成资源数据...</p>
@@ -653,6 +737,9 @@ watch(() => agentResource.value, () => {
               msg.role === 'assistant' ? 'bg-white/5 text-slate-300' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/20']">
               <div v-if="msg.role === 'assistant' && agent.role.toLowerCase() === 'hacker'" class="font-mono text-green-400">
                 {{ msg.content }}
+              </div>
+              <div v-else-if="msg.role === 'assistant' && agent.role.toLowerCase() === 'professor'" class="prose prose-invert max-w-none">
+                <div v-html="renderMarkdown(msg.content)"></div>
               </div>
               <div v-else>{{ msg.content }}</div>
               <div class="text-xs text-slate-500 mt-2">
