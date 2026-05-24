@@ -24,7 +24,8 @@
       "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0QWRlbmV4cy5jb20iLCJleHAiOjE3MjI5ODgwMTB9.oQkGrT8V\" -d '{\"goal\": \"人工智能学习路径\"}')",
       "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkwMjQxNjgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.vK_tcWDXaQWdNyyzV4g2QzKYCRNklxjOzj3QPQ5D_AE\" -d '{\"goal\": \"人工智能学习路径\"}')",
       "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkwMjQxNjgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.vK_tcWDXaQWdNyyzV4g2QzKYCRNklxjOzj3QPQ5D_AE\" -d '{\"goal\": \"深度学习入门\"}')",
-      "Bash(curl -s \"http://localhost:8001/health\")"
+      "Bash(curl -s \"http://localhost:8001/health\")",
+      "Bash(pip list *)"
     ]
   }
 }
