@@ -420,3 +420,16 @@ GEMINI_MODEL=gemma-3-27b
 - WebSocket 端点同样需要 Token 验证（连接时通过 query param 传递：`?token=xxx`）
 - 分页响应格式：`{ data: T[], total: number, page: number, page_size: number }`
 - 错误响应格式：`{ detail: string }`（FastAPI HTTPException 标准格式）
+
+
+现在项目v1.0.0已经开发完成，
+接下来将在资源生成的agent部分进行开发迭代。
+现在已经创建了独立的文件夹agents作为下个版本v2.0.0控制llm的驱动，我们就聚焦这个部分开发。
+注意：我这个项目是大学竞赛用，我将用v1.0.0代码进行实机演示。v2.0.0的agents部分写技术文档。所以不要改动我原来的代码，修改只局限于agents文件夹内。
+目标：v1.0.0是由prompt驱动的初级agent项目，我将一步步迭代至像claude code一样非常完善的agent项目。下面是我的计划供参考
+演进阶段	驱动方式	状态管理	核心能力	错误处理	评委关注点
+当前 (Stage 0)	纯 Prompt 链式拼接	无 / 依赖 LLM 记忆	生成基础文本	无（一旦报错，满盘皆输）	“只是个简单的 GPT 套壳”
+Stage 1 (骨架化)	结构化 Pydantic	全局单源 State Schema	确保格式与大纲可控	失败抛出异常，需人工干预	“工程结构清晰，格式可控”
+Stage 2 (工具化)	Tool Call & XML Thinking	结构化 State + 步骤历史	自动文献检索，本地文件流读写	简单的异常重试	“有行动力，不再只是空谈”
+Stage 3 (装具化)	Agent Harness	自动状态管理与沙箱生命周期	沙箱执行 Python、物理排版校验	stderr 捕获，闭环自动修错 (Auto-heal)	“具备极强的工程深度与自愈能力”
+Stage 4-5 (工业级)	混合路由 + Compactor	高效压缩，持久化 Thread Memory	极长链路的长程学术资源生成	详尽的日志与自动化指标评测	“比肩工业级 agent（如 Claude Code）的工程熟练度”
