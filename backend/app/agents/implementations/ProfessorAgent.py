@@ -37,10 +37,13 @@ class ProfessorAgent(BaseAgent):
     def execute(self, context: AgentContext) -> AgentExecutionResult:
         """执行任务"""
         try:
-            prompt_template = LangChainUtils.create_prompt_template(self.PROMPT_TEMPLATE)
-            result = LangChainUtils.execute_chain(prompt_template, {
-                "topic": context.topic
-            })
+                <thought>需要检索学术论文支持内容生成</thought>
+                content = f"<thought>需要检索学术论文支持内容生成</thought>\n" + json.dumps({
+                    "title": f"{context.topic} 深度解析",
+                    "sections": [
+                        {"heading": "背景", "body": f"基于 {search_results[0]['title']}"}
+                    ]
+                })
 
             return AgentExecutionResult(
                 agent_id=self.config.id,

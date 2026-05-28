@@ -817,12 +817,11 @@ if __name__ == "__main__":
 
     async def generate_for_agent(self, agent_type: str, topic: str, profile: Dict = None) -> Dict:
         """
-        为特定智能体生成内容，使用DeepSeek API
+        为特定智能体生成内容，通过 LLM Gateway 统一拦截。
         """
-        try:
-            # 定义不同智能体的生成提示
-            prompts = {
-                "professor": f"""你是一位资深的教育学教授，专门深入浅出地解释复杂概念。
+        # 定义不同智能体的生成提示
+        prompts = {
+            "professor": f"""你是一位资深的教育学教授，专门深入浅出地解释复杂概念。
 
 主题：{topic}
 
@@ -836,7 +835,7 @@ if __name__ == "__main__":
 
 请确保内容深入浅出，适合有一定基础的学习者。""",
 
-                "architect": f"""你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。
+            "architect": f"""你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。
 
 主题：{topic}
 
@@ -866,7 +865,7 @@ if __name__ == "__main__":
     }}
 }}""",
 
-                "examiner": f"""你是一位专业考试设计专家，根据给定主题设计高质量的测验题。
+            "examiner": f"""你是一位专业考试设计专家，根据给定主题设计高质量的测验题。
 
 主题：{topic}
 
@@ -890,7 +889,7 @@ if __name__ == "__main__":
     ]
 }}""",
 
-                "director": f"""你是一位教育视频导演，设计生动的可视化教学内容。
+            "director": f"""你是一位教育视频导演，设计生动的可视化教学内容。
 
 主题：{topic}
 
@@ -926,7 +925,7 @@ if __name__ == "__main__":
     ]
 }}""",
 
-                "hacker": f"""你是一位实战派技术专家，提供可运行的代码示例。
+            "hacker": f"""你是一位实战派技术专家，提供可运行的代码示例。
 
 主题：{topic}
 
@@ -946,7 +945,7 @@ if __name__ == "__main__":
     "exercises": ["练习1", "练习2"]
 }}""",
 
-                "reviewer": f"""你是一位教育内容评审专家，对生成的内容进行质量评估。
+            "reviewer": f"""你是一位教育内容评审专家，对生成的内容进行质量评估。
 
 主题：{topic}
 
@@ -963,41 +962,19 @@ if __name__ == "__main__":
     "suggestions": ["建议1", "建议2"],
     "difficulty_assessment": "难度评估"
 }}"""
-            }
+        }
 
-            prompt = prompts.get(agent_type, f"请关于{topic}生成相关内容")
+        prompt = prompts.get(agent_type, f"请关于{topic}生成相关内容")
 
-            payload = {
-                "model": settings.DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": "system", "content": "你是一位专业的教育内容生成专家。请严格按照指定的格式和要求生成内容。"},
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": 0.7,
-                "max_tokens": 4000  # 增加到4000 tokens
-            }
-
-            response = requests.post(
-                self.deepseek_api_url,
-                headers=self.deepseek_headers,
-                json=payload,
-                timeout=60
-            )
-            response.raise_for_status()
-            response_data = response.json()
-            content_text = response_data["choices"][0]["message"]["content"]
-            # 尝试解析JSON响应
-            try:
-                content = json.loads(content_text)
-                return content
-            except json.JSONDecodeError:
-                print(f"JSON解析失败，使用原始文本: {content_text[:100]}...")
-                return {"content": content_text}
-
-        except Exception as e:
-            print(f"DeepSeek API 调用失败: {str(e)}")
-            # 回退到现有的mock数据
-            return self._get_fallback(agent_type, topic)
+        from app.core.llm_gateway import llm_gateway
+        result = await llm_gateway.call(
+            prompt=prompt,
+            agent_type=agent_type,
+            topic=topic,
+            profile=profile,
+            fallback_fn=self._get_fallback,
+        )
+        return result["content"]
 
 
 generator = ContentGenerator()

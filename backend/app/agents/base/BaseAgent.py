@@ -9,6 +9,9 @@ class BaseAgent(ABC):
 
     def __init__(self, config: AgentConfig):
         self.config = config
+        self.system_prompt = self._build_system_prompt()
+        self.system_prompt = self._build_system_prompt()
+        self.system_prompt = self._build_system_prompt()
 
     def get_config(self) -> AgentConfig:
         """获取Agent配置"""
@@ -26,5 +29,9 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def interrupt(self) -> None:
-        """中断Agent执行"""
-        pass
+    def _build_system_prompt(self) -> str:
+        return (
+            f"You are a {self.config.agent_type} agent. ",
+            "ALWAYS output thought process in <thought> tags BEFORE any tool call or final answer.\n",
+            "Example: <thought>Need to search for academic papers on {topic}</thought>"
+        )

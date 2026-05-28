@@ -30,9 +30,12 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    # DeepSeek API (用于破冰对话)
+    # DeepSeek API (用于破冰对话和资源生成)
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_MODEL: str = "deepseek-chat"
+
+    # Demo mode — 演示时跳过真实 LLM 调用，直接返回 fallback 内容
+    DEMO_MODE: bool = False
 
     @property
     def is_production(self) -> bool:

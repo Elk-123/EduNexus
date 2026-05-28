@@ -19,7 +19,9 @@
 
 **EduNexus** 是一个 Vue 3 + TypeScript + Vite 的多智能体 AI 教育平台，采用暗色主题、Google AI Studio 风格 UI。平台实现了**五大核心模块**——多个专业 AI 智能体协同工作，完成从学生画像构建、内容生成、学习路径规划、资源推送到智能辅导与评估的完整教育闭环。
 
-**当前阶段**: 前后端已全面完成基础架构和核心功能实现。前端 7 个页面（登录/注册/破冰/首页/内容工厂/学习路径/资源推送/智能辅导/学习评估）UI 完成并全量对接后端。后端 FastAPI 实现全部 7 个模块（认证/画像/内容工厂/学习路径/资源推送/智能辅导/学习评估）API。平台已实现完整的教育闭环，包括实时 WebSocket 通信、多智能体协作、动态路径规划等功能。
+**当前阶段**: v1.0.0 前后端已全面完成，用于竞赛实机演示。v2.0.0 下一代 Agent 引擎在 `agents/` 目录中隔离开发中，目标是从 Prompt 驱动升级为具备 Tool Use、Memory、自主规划能力的类 Claude Code 智能体系统。
+
+> **版本策略**: v1.0.0 代码保持稳定不变，v2.0.0 开发仅限 `backend/app/agents/` 和 `EduNexus/src/agents/` 目录。
 
 ---
 
@@ -422,14 +424,124 @@ GEMINI_MODEL=gemma-3-27b
 - 错误响应格式：`{ detail: string }`（FastAPI HTTPException 标准格式）
 
 
-现在项目v1.0.0已经开发完成，
-接下来将在资源生成的agent部分进行开发迭代。
-现在已经创建了独立的文件夹agents作为下个版本v2.0.0控制llm的驱动，我们就聚焦这个部分开发。
-注意：我这个项目是大学竞赛用，我将用v1.0.0代码进行实机演示。v2.0.0的agents部分写技术文档。所以不要改动我原来的代码，修改只局限于agents文件夹内。
-目标：v1.0.0是由prompt驱动的初级agent项目，我将一步步迭代至像claude code一样非常完善的agent项目。下面是我的计划供参考
-演进阶段	驱动方式	状态管理	核心能力	错误处理	评委关注点
-当前 (Stage 0)	纯 Prompt 链式拼接	无 / 依赖 LLM 记忆	生成基础文本	无（一旦报错，满盘皆输）	“只是个简单的 GPT 套壳”
-Stage 1 (骨架化)	结构化 Pydantic	全局单源 State Schema	确保格式与大纲可控	失败抛出异常，需人工干预	“工程结构清晰，格式可控”
-Stage 2 (工具化)	Tool Call & XML Thinking	结构化 State + 步骤历史	自动文献检索，本地文件流读写	简单的异常重试	“有行动力，不再只是空谈”
-Stage 3 (装具化)	Agent Harness	自动状态管理与沙箱生命周期	沙箱执行 Python、物理排版校验	stderr 捕获，闭环自动修错 (Auto-heal)	“具备极强的工程深度与自愈能力”
-Stage 4-5 (工业级)	混合路由 + Compactor	高效压缩，持久化 Thread Memory	极长链路的长程学术资源生成	详尽的日志与自动化指标评测	“比肩工业级 agent（如 Claude Code）的工程熟练度”
+---
+
+## ★ v2.0.0 Agent 引擎（开发中）
+
+> **关键原则**: v1.0.0 代码用于竞赛实机演示，保持不变。v2.0.0 的 agents 模块是完全隔离的下一代引擎，所有修改仅限于 `agents/` 文件夹内。
+
+### v1.0.0 vs v2.0.0 架构对照
+
+| 维度 | v1.0.0 (演示系统，稳定) | v2.0.0 Agent 引擎 (开发中) |
+|------|------------------------|--------------------------|
+| **LLM 驱动** | 字符串 Prompt + DeepSeek API (`LLMGateway`) | LangChain + Google Gemini (`LangChainUtils`) |
+| **Agent 形态** | `ContentGenerator` 中的字典+函数字段 | OOP 类 (`BaseAgent` 子类，含 config/state/interrupt) |
+| **编排方式** | `AgentOrchestrator` (asyncio.gather 并行 + WS 紧耦合) | `AgentCoordinator` (顺序流水线，纯业务逻辑) |
+| **工具调用** | 无 | `tools/` 目录 (academic_search, markdown_generator 雏形) |
+| **状态管理** | DB 字段 `agents_status` JSON | 内存态 `AgentStatusInfo` 对象，含 success/failure 计数 |
+| **WebSocket** | 编排器内直接调用 `ws_manager.broadcast()` | 未接入（协调器与传输层解耦） |
+| **集成状态** | 生产运行，API 路由直接引用 | 完全隔离，未被任何 v1.0.0 代码 import |
+| **目标** | 稳定演示 | 类 Claude Code 的完善 Agent 系统 |
+
+### 后端 agents 模块结构
+
+```
+backend/app/agents/
+├── __init__.py                  # 桶文件，导出全部 Agent、Coordinator、类型
+├── README.md                    # 模块技术文档
+├── EXAMPLE_INTEGRATION.md       # 集成示例代码（API/WS/异步）
+├── base/
+│   └── BaseAgent.py             # 抽象基类 (execute/get_status/interrupt/_build_system_prompt)
+├── coordinator/
+│   └── AgentCoordinator.py      # 流水线编排：注册Agent → 顺序执行 → 状态追踪
+├── implementations/
+│   ├── ManagerAgent.py          # 主控中枢：任务分解、执行优先级规划
+│   ├── ProfessorAgent.py        # 教授：学术性结构化教学内容
+│   ├── ArchitectAgent.py        # 架构师：思维导图/知识结构树
+│   ├── ExaminerAgent.py         # 考官：选择题+简答题评估材料
+│   ├── DirectorAgent.py         # 导演：视频脚本(场景/旁白/时长)
+│   ├── HackerAgent.py           # 极客：代码示例+编程练习
+│   └── ReviewerAgent.py         # 审查员：幻觉风险/质量评分/改进建议
+├── types/
+│   └── __init__.py              # AgentStatus/AgentType Enum, AgentConfig/Context/Result/ExecutionResult/StatusInfo dataclass
+├── tools/
+│   ├── academic_search.py       # AcademicSearchTool: 学术检索（当前返回 mock）
+│   └── markdown_generator.py    # MarkdownGeneratorTool: 内容→Markdown
+└── utils/
+    └── LangChainUtils.py        # LangChain 封装：模型初始化/Prompt模板/RunnableSequence
+```
+
+### 前端 agents 模块结构
+
+```
+EduNexus/src/agents/
+├── index.ts                     # 桶文件
+├── README.md                    # 模块技术文档
+├── EXAMPLE_INTEGRATION.md       # 与 ContentFactory 集成的示例代码
+├── base/
+│   └── BaseAgent.ts             # 抽象基类 (execute/getStatus/interrupt)
+├── coordinator/
+│   └── AgentCoordinator.ts      # 流水线编排 (TS 版，async executePipeline)
+├── implementations/
+│   ├── ManagerAgent.ts          # 7 个 Agent 实现（TS 版，结构与后端同构）
+│   ├── ProfessorAgent.ts
+│   ├── ArchitectAgent.ts
+│   ├── ExaminerAgent.ts
+│   ├── DirectorAgent.ts
+│   ├── HackerAgent.ts
+│   └── ReviewerAgent.ts
+├── types/
+│   └── index.ts                 # AgentConfig/Context/Result/ExecutionResult/Status 接口
+└── utils/
+    └── LangChainUtils.ts        # @langchain/google-genai 封装
+```
+
+### 核心类型体系
+
+```
+AgentConfig      { id, name, role, capabilities[], timeout }
+AgentContext     { task_id, topic, context?, user_input? }
+AgentResult      { content, type, timestamp, quality_score?, log[] }
+AgentExecutionResult { agent_id, status: AgentStatus, result?, error?, duration }
+AgentStatusInfo  { agent_id, status, last_updated, current_task?, success_count, failure_count }
+AgentStatus      Enum: idle | running | success | error
+AgentType        Enum: manager | professor | architect | examiner | director | hacker | reviewer
+```
+
+### 流水线执行流程
+
+```
+AgentCoordinator.execute_pipeline(topic)
+  → 生成 task_id
+  → 按序遍历 [manager, professor, architect, examiner, director, hacker, reviewer]
+  → 对每个 Agent:
+      1. update_status(running)
+      2. agent.execute(context)  → AgentExecutionResult
+      3. update_status(success/error)
+      4. 记录 duration, 累加 success/failure count
+  → 返回 List[AgentExecutionResult]
+```
+
+### v2.0.0 迭代路线
+
+> 从 Prompt 驱动到类 Claude Code 的演进路径。
+
+| 阶段 | 目标 | 关键特征 |
+|------|------|----------|
+| **Phase 0** (当前) | OOP 骨架搭建 | BaseAgent 抽象、7 个 Agent 实现、Coordinator 顺序编排、LangChainUtils 基础封装 |
+| **Phase 1** | Tool Use 能力 | Agent 可调用工具 (academic_search, code_exec, web_search)，实现 ReAct 循环 |
+| **Phase 2** | 异步 + 并行 | Coordinator 支持 asyncio.gather 并行执行专家 Agent，接入 WebSocket 广播 |
+| **Phase 3** | Memory 机制 | 短期对话记忆 + 长期学生画像记忆，Agent 可查询历史上下文 |
+| **Phase 4** | 自主规划 | Manager Agent 具备动态任务分解能力，可根据主题自动选择参与的 Agent |
+| **Phase 5** | 反思与自愈 | Agent 执行失败后自动重试/回退，Reviewer 结果反馈给上游 Agent 重新生成 |
+| **Phase 6** | 多模态输出 | Agent 直接生成图表(SVG/Mermaid)、代码可执行沙箱、视频分镜可视化 |
+| **Phase 7** | 生产集成 | 替换 v1.0.0 的 ContentGenerator + AgentOrchestrator，接入 FastAPI 路由 |
+
+### 开发约束
+
+1. **v1.0.0 代码不可修改** — `backend/app/services/`、`backend/app/api/`、`EduNexus/src/views/`、`EduNexus/src/stores/` 等全部保持原样
+2. **修改仅限 agents/ 目录** — `backend/app/agents/` 和 `EduNexus/src/agents/` 是 v2.0.0 的专属开发区域
+3. **前端 agents 模块为 TS 同构实现** — 用于未来可能的客户端侧 Agent 编排或可视化，当前不参与实际请求链路
+4. **ProfessorAgent.py 存在语法错误** — 第 40-46 行有未缩进的 `<thought>` 标签伪代码和未定义变量 (`search_results`, `json`)，这是预留的 Tool Use 开发占位，Phase 1 时需修复
+5. **BaseAgent.py 存在重复行** — 第 13-15 行 `self.system_prompt = self._build_system_prompt()` 重复 3 次，`interrupt()` 方法缺少 `pass`/实现，需后续清理
+6. **LangChainUtils 使用同步 invoke** — 后端 `execute_chain` 应改为 `ainvoke` 以适配 FastAPI 异步模型
