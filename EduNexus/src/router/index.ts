@@ -32,11 +32,6 @@ const router = createRouter({
           component: HomeView
         },
         {
-          path: 'simple',
-          name: 'simple',
-          component: () => import('@/views/SimpleTest.vue')
-        },
-        {
           path: 'factory',
           name: 'content-factory',
           component: () => import('@/views/ContentFactory/index.vue')
