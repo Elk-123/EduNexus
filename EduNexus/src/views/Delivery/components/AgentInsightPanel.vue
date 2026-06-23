@@ -16,7 +16,7 @@ import { Brain, ShieldCheck, Zap } from 'lucide-vue-next';
         </div>
       </div>
       <p class="text-[11px] text-zinc-400 bg-white/5 p-3 rounded-xl border border-white/5 leading-relaxed">
-        "我根据你对'反向传播'的掌握度，动态插入了一个线性代数补丁卡片。"
+        "检测到你对 Transformer 注意力机制的理解已达标，已将 CNN 卷积网络解锁并推送到你的学习流中。"
       </p>
       <div class="grid grid-cols-2 gap-2">
         <div class="p-3 rounded-xl bg-zinc-900 border border-zinc-800 text-center">

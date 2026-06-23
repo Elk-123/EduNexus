@@ -5,7 +5,8 @@ import {
   MessageSquare,
   ExternalLink,
   Star,
-  Flame
+  Flame,
+  Newspaper,
 } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import type { TrendingItem } from '@/types/resources'
@@ -21,6 +22,7 @@ const sourceIcon = (source: string) => {
     case 'GitHub': return Github
     case 'StackOverflow': return MessageSquare
     case 'Arxiv': return TrendingUp
+    case 'HackerNews': return Newspaper
     default: return Flame
   }
 }
@@ -30,7 +32,18 @@ const sourceColor = (source: string) => {
     case 'GitHub': return 'text-white'
     case 'StackOverflow': return 'text-orange-400'
     case 'Arxiv': return 'text-blue-400'
+    case 'HackerNews': return 'text-amber-400'
     default: return 'text-zinc-400'
+  }
+}
+
+const sourceBg = (source: string) => {
+  switch (source) {
+    case 'GitHub': return 'bg-white/10'
+    case 'StackOverflow': return 'bg-orange-500/20'
+    case 'Arxiv': return 'bg-blue-500/20'
+    case 'HackerNews': return 'bg-amber-500/20'
+    default: return 'bg-zinc-800'
   }
 }
 </script>
@@ -43,37 +56,47 @@ const sourceColor = (source: string) => {
         <div class="p-1.5 bg-orange-500/20 rounded-lg">
           <Flame class="text-orange-500" :size="16" />
         </div>
-        <h4 class="font-bold text-white text-sm">行业热点 (Trending)</h4>
+        <h4 class="font-bold text-white text-sm">科技行业趋势</h4>
+        <span class="text-[10px] text-zinc-600">· {{ props.items.length }} 条</span>
       </div>
-      <button class="text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors uppercase font-bold tracking-widest">
-        查看全部
-      </button>
+      <span class="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Trending</span>
     </div>
 
-    <!-- Trend List -->
-    <div class="space-y-4">
+    <!-- Trend List — scrollable -->
+    <div class="space-y-3">
       <a
         v-for="(item, idx) in props.items"
         :key="idx"
         :href="item.url"
         target="_blank"
         rel="noopener noreferrer"
-        class="group block space-y-2"
+        class="group block"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex-grow space-y-1">
-            <div class="flex items-center gap-2">
-              <component :is="sourceIcon(item.source)" :size="12" :class="sourceColor(item.source)" class="opacity-70" />
-              <span class="text-[10px] font-bold text-zinc-500 uppercase tracking-tighter">{{ item.source }}</span>
+        <div class="flex items-start gap-3 py-2">
+          <!-- 序号 -->
+          <span
+            class="text-[11px] font-mono font-bold shrink-0 w-5 text-right"
+            :class="idx < 3 ? 'text-orange-500' : 'text-zinc-600'"
+          >{{ idx + 1 }}</span>
+
+          <!-- 内容 -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <div :class="['p-0.5 rounded', sourceBg(item.source)]">
+                <component :is="sourceIcon(item.source)" :size="10" :class="sourceColor(item.source)" />
+              </div>
+              <span class="text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">{{ item.source }}</span>
             </div>
-            <h5 class="text-xs font-medium text-zinc-300 group-hover:text-blue-400 transition-colors leading-snug">
+            <h5 class="text-xs font-medium text-zinc-300 group-hover:text-blue-400 transition-colors leading-snug line-clamp-2">
               {{ item.title }}
             </h5>
           </div>
-          <ExternalLink :size="12" class="text-zinc-700 group-hover:text-zinc-400 mt-1" />
+
+          <ExternalLink :size="11" class="text-zinc-700 group-hover:text-zinc-400 shrink-0 mt-1" />
         </div>
 
-        <div class="flex items-center justify-between border-b border-zinc-800/50 pb-3 last:border-0 last:pb-0" :class="{ 'border-0 pb-0': idx === props.items.length - 1 }">
+        <!-- 底部 meta -->
+        <div class="flex items-center justify-between ml-8 pb-2 border-b border-zinc-800/40 last:border-0 last:pb-0">
           <Badge variant="outline" class="text-[9px] py-0 h-4 bg-zinc-900/50 border-zinc-800 text-zinc-500 font-normal">
             #{{ item.tag }}
           </Badge>
@@ -85,22 +108,15 @@ const sourceColor = (source: string) => {
       </a>
     </div>
 
-    <!-- Footer Action -->
-    <div class="pt-2">
+    <!-- Footer -->
+    <div class="pt-1">
       <div class="rounded-2xl bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-white/5 p-3">
         <p class="text-[10px] text-zinc-400 leading-tight">
-          💡 <span class="text-zinc-200">AI Insight:</span> 
-          根据你的关注点，我们发现 WebAssembly 可能与你下周的学习任务相关。
+          💡 <span class="text-zinc-200">AI Insight:</span>
+          本周 MoE 架构和状态空间模型 (SSM) 热度持续上升，可能与你的学习路径产生交叉。
         </p>
       </div>
     </div>
   </div>
 </template>
 
-<style scoped>
-/* 悬停微动效 */
-.group:hover h5 {
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-</style>

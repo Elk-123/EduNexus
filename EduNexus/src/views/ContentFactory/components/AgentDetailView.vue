@@ -1,7 +1,7 @@
 <!-- src/views/ContentFactory/components/AgentDetailView.vue -->
 <script setup lang="ts">
 import { ref, onMounted, nextTick, computed, watch } from 'vue'
-import { X, Send, Bot, User, Sparkles, FileText, Copy, CheckCircle2 } from 'lucide-vue-next'
+import { X, Send, Bot, User, Sparkles, FileText, Copy, CheckCircle2, PlayCircle } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { chatWithAgent } from '@/api/factory'
@@ -292,7 +292,246 @@ const buildExpertContext = () => {
   return contextInfo
 }
 
-const messages = ref([
+// ── Demo Mock 数据 ──
+// YouTube 中文视频资源（导演智能体中文资料演示用）
+const mockYoutubeVideos = [
+  {
+    title: '解析Transformer之什么是注意力机制',
+    url: 'https://www.youtube.com/watch?v=p-jAXaCdaAI',
+    thumbnail: 'https://img.youtube.com/vi/p-jAXaCdaAI/maxresdefault.jpg',
+    duration: '22：37',
+    platform: 'YouTube',
+    description: '',
+    sceneTitle: '',
+    sceneNumber: 1,
+  },
+  {
+    title: '从编解码和词嵌入开始，一步一步理解Transformer，注意力机制(Attention)的本质是卷积神经网络(CNN)',
+    url: 'https://www.youtube.com/watch?v=GGLr-TtKguA',
+    thumbnail: 'https://img.youtube.com/vi/GGLr-TtKguA/maxresdefault.jpg',
+    duration: '1:45:11',
+    platform: 'YouTube',
+    description: '',
+    sceneTitle: '',
+    sceneNumber: 2,
+  },
+  {
+    title: 'Transformer论文逐段精读',
+    url: 'https://www.youtube.com/watch?v=nzqlFIcCSWQ',
+    thumbnail: 'https://img.youtube.com/vi/nzqlFIcCSWQ/maxresdefault.jpg',
+    duration: '1:27:04',
+    platform: 'YouTube',
+    description: '',
+    sceneTitle: '',
+    sceneNumber: 3,
+  },
+]
+
+// 演示用 Mock 视频 ref（Director 对话触发后填充）
+const mockVideos = ref<any[]>([])
+
+// ── 思维链（Thinking Chain）─ ─
+interface ThinkingEntry {
+  type: 'thought' | 'tool_call' | 'tool_result' | 'prompt'
+  content: string
+  detail?: string
+  meta?: string
+}
+
+const thinkingChain = ref<ThinkingEntry[]>([])
+
+// ── Professor 思维链 Mock ──
+const mockProfessorThinking: ThinkingEntry[] = [
+  {
+    type: 'thought',
+    content: '用户询问RNN序列建模的局限性及原因。需要从梯度消失/爆炸的数学机制、长期依赖问题、串行计算瓶颈三个核心角度展开，并引出LSTM/GRU/Transformer等演进方案。先搜索相关学术文献获取准确引用。',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_search',
+    detail: 'query: "RNN vanishing gradient long-term dependency limitation Bengio Hochreiter"',
+    meta: '0.42s',
+  },
+  {
+    type: 'tool_result',
+    content: `搜索返回 5 条结果：
+  [1] Bengio et al. (1994) — "Learning Long-Term Dependencies with Gradient Descent is Difficult"
+  [2] Hochreiter & Schmidhuber (1997) — "Long Short-Term Memory"
+  [3] Pascanu et al. (2013) — "On the difficulty of training recurrent neural networks"
+  [4] colah's blog — "Understanding LSTM Networks" (2015)
+  [5] Bahdanau et al. (2014) — "Neural Machine Translation by Jointly Learning to Align and Translate"`,
+    meta: '5 results · 0.42s',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_fetch',
+    detail: 'url: "https://arxiv.org/abs/1211.5063"',
+    meta: '0.67s',
+  },
+  {
+    type: 'tool_result',
+    content: `Pascanu et al. (2013) 系统分析了RNN训练中的梯度问题：
+  · 梯度爆炸可通过 gradient clipping（阈值裁剪）有效缓解
+  · 梯度消失是更根本的难题——隐藏状态转移矩阵的谱半径 < 1 时，梯度沿时间步呈指数级衰减
+  · BPTT 中连乘 Jacobian 矩阵导致长期依赖信号在反向传播中迅速消失
+  · 实验表明标准RNN在序列长度 > 20 时几乎无法捕捉远程依赖`,
+    meta: '3,127 chars · 0.67s',
+  },
+  {
+    type: 'prompt',
+    content: `--- system ---
+你是一位资深的深度学习与自然语言处理教育专家。请用中文回答，以清晰的逻辑结构、数学公式和生动例子解释概念。使用 Markdown 格式，包含一个对比表格。
+
+--- user ---
+RNN序列建模的局限是什么，为什么有这个问题`,
+    meta: '1,284 tokens',
+  },
+  {
+    type: 'thought',
+    content: '资料已覆盖核心论据。回答按四部分结构组织：①BPTT梯度连乘导致消失/爆炸的数学原理 ②长期依赖失效的具体表现 ③串行架构无法并行的工程限制 ④LSTM→GRU→Attention→Transformer的演进对比表。开始生成。',
+  },
+]
+
+// ── Director 思维链 Mock ──
+const mockDirectorThinking: ThinkingEntry[] = [
+  {
+    type: 'thought',
+    content: '用户需要中文学习资料。当前主题是Transformer/注意力机制，我需要通过搜索找到YouTube上的优质中文教程，逐项核实视频信息后筛选出最合适的3个推荐给用户。',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_search',
+    detail: 'query: "site:youtube.com Transformer 注意力机制 中文 教程"',
+    meta: '0.61s',
+  },
+  {
+    type: 'tool_result',
+    content: `搜索返回 8 条结果，按语言过滤后保留 5 个中文候选：
+  [1] 解析Transformer之什么是注意力机制 — 22:37
+  [2] 从编解码和词嵌入开始，一步一步理解Transformer — 1:45:11
+  [3] Transformer论文逐段精读 — 1:27:04
+  [4] 李宏毅 Transformer 详解 — 1:03:25
+  [5] 3Blue1Brown 注意力机制可视化（中文字幕）— 18:15`,
+    meta: '8 → 5 filtered · 0.61s',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_fetch',
+    detail: 'url: "https://www.youtube.com/watch?v=p-jAXaCdaAI"',
+    meta: '0.31s',
+  },
+  {
+    type: 'tool_result',
+    content: `[1] 解析Transformer之什么是注意力机制
+    URL: youtube.com/watch?v=p-jAXaCdaAI
+    时长: 22:37 | 播放: 8.2万 | 语言: 中文
+    内容: 从零讲解自注意力机制核心思想，动画演示 Q/K/V 计算过程，适合入门`,
+    meta: '200 · 0.31s',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_fetch',
+    detail: 'url: "https://www.youtube.com/watch?v=GGLr-TtKguA"',
+    meta: '0.28s',
+  },
+  {
+    type: 'tool_result',
+    content: `[2] 从编解码和词嵌入开始，一步一步理解Transformer
+    URL: youtube.com/watch?v=GGLr-TtKguA
+    时长: 1:45:11 | 播放: 12.5万 | 语言: 中文
+    内容: 深入讲解注意力机制本质，论证 Attention 可视为一种动态 CNN，适合进阶`,
+    meta: '200 · 0.28s',
+  },
+  {
+    type: 'tool_call',
+    content: 'web_fetch',
+    detail: 'url: "https://www.youtube.com/watch?v=nzqlFIcCSWQ"',
+    meta: '0.35s',
+  },
+  {
+    type: 'tool_result',
+    content: `[3] Transformer论文逐段精读
+    URL: youtube.com/watch?v=nzqlFIcCSWQ
+    时长: 1:27:04 | 播放: 25.3万 | 语言: 中文
+    内容: 逐段精读 "Attention Is All You Need"，涵盖 Self-Attention / Multi-Head / Position Encoding 全部细节`,
+    meta: '200 · 0.35s',
+  },
+  {
+    type: 'prompt',
+    content: `--- system ---
+你是一位教育资源推荐专家。根据搜索结果，为用户筛选3个最优质的中文学习视频。要求：覆盖入门到进阶，每个视频注明推荐理由和适合人群。用简洁的中文回复。
+
+--- user ---
+我想要中文资料`,
+    meta: '892 tokens',
+  },
+  {
+    type: 'thought',
+    content: '已筛选出3个视频。层次分明：入门(22min)→进阶(1h45min)→论文精读(1h27min)。YouTube缩略图用 img.youtube.com/vi/{id}/maxresdefault.jpg。左侧面板渲染视频卡片，右侧回复推荐摘要。',
+  },
+]
+
+// 获取 Mock 思维链
+const getMockThinking = (agentRole: string): ThinkingEntry[] => {
+  if (agentRole === 'professor') return [...mockProfessorThinking]
+  if (agentRole === 'director') return [...mockDirectorThinking]
+  return []
+}
+
+// 检测演示问题并返回 Mock 回复
+const getMockReply = (query: string, agentRole: string): string | null => {
+  const q = query.trim()
+
+  // Professor: RNN 序列建模局限
+  if (agentRole === 'professor' && (q.includes('RNN') || q.includes('rnn')) && q.includes('局限')) {
+    return `## RNN 序列建模的局限性
+
+### 1. 梯度消失与梯度爆炸
+
+RNN 通过时间反向传播（BPTT）训练，梯度需要沿时间步连乘权重矩阵。当序列较长时：
+
+- **梯度消失**：若权重矩阵的谱半径小于 1，连乘导致梯度指数级衰减，早期时间步几乎得不到更新信号
+- **梯度爆炸**：若谱半径大于 1，梯度指数级增长，导致参数更新幅度过大，模型无法收敛
+
+这是 RNN 无法有效处理长序列的根本数学原因。
+
+### 2. 长期依赖问题
+
+标准 RNN 的隐藏状态 $h_t = \\tanh(W_h h_{t-1} + W_x x_t + b)$ 在每一个时间步都会"稀释"之前的信息。当序列长度超过约 20-30 步时，模型几乎无法捕捉相距较远的依赖关系。
+
+> 例如："我在法国长大……（中间 50 个词）……所以我能说流利的法语" — RNN 很难将句首的"法国"与句末的"法语"关联起来。
+
+### 3. 串行计算受限
+
+RNN 的递归结构决定了 $t$ 时刻的计算必须等待 $t-1$ 时刻完成，无法像 CNN 或 Transformer 那样并行处理整个序列。这在处理长序列时导致训练速度极慢。
+
+### 4. 解决方案演进
+
+| 方案 | 核心思路 | 代表模型 |
+|------|---------|---------|
+| 门控机制 | 引入遗忘门/输入门控制信息流动 | LSTM、GRU |
+| 注意力机制 | 直接计算任意两个位置的关联权重 | Transformer |
+| 跳跃连接 | 在时间维度上添加残差连接 | IndRNN |
+
+LSTM 和 GRU 在一定程度上缓解了梯度消失，但并未根本解决并行计算问题。最终 Transformer 通过自注意力机制彻底摆脱了递归结构，成为当前序列建模的主流范式。`
+  }
+
+  // Director: 中文资料请求（仅返回文字，视频在 typing 完成后渲染）
+  if (agentRole === 'director' && (q.includes('中文') || q.includes('YouTube') || q.includes('youtube') || q.includes('B站') || q.includes('b站') || q.includes('bilibili'))) {
+    return `好的！我为你找到了 3 个优质的中文学习资源，全部来自 YouTube，已经在左侧面板展示。
+
+
+1. **解析Transformer之什么是注意力机制** — 直观理解 Attention 核心思想，22分钟，适合入门
+2. **从编解码和词嵌入开始理解Transformer** — 深入讲解注意力机制本质与 CNN 的关联，1小时45分钟，适合进阶
+3. **Transformer论文逐段精读** — 逐段精讲原论文，1小时27分钟，适合深入研读
+
+你可以直接点击左侧的视频卡片观看`
+  }
+
+  return null
+}
+
+const messages = ref<Array<{ role: string; content: string; timestamp: string; thinking?: ThinkingEntry[] }>>([
   {
     role: 'assistant',
     content: `你好！我是${props.agent.name}专家。${buildExpertContext()} 有什么问题或需要优化的地方，请随时告诉我！`,
@@ -378,10 +617,42 @@ const sendMessage = async () => {
   input.value = ''
   showSuggestions.value = false
   isTyping.value = true
+  thinkingChain.value = []
   scrollToBottom()
 
   try {
     agentResponse.value = ''
+
+    // 检查是否有 Demo Mock 回复
+    const mockReply = getMockReply(userQuery, props.agent.role.toLowerCase())
+    if (mockReply) {
+      // 流式输出思维链：条目逐个出现
+      const entries = getMockThinking(props.agent.role.toLowerCase())
+      thinkingChain.value = []
+      for (const entry of entries) {
+        await new Promise(r => setTimeout(r, 120 + Math.random() * 200))
+        thinkingChain.value = [...thinkingChain.value, entry]
+        scrollToBottom()
+      }
+
+      await typeMessage(mockReply)
+      // 打字完成后才渲染左侧视频（确保回复与视频同步出现）
+      if (props.agent.role.toLowerCase() === 'director') {
+        mockVideos.value = [...mockYoutubeVideos]
+      }
+      messages.value.push({
+        role: 'assistant',
+        content: mockReply,
+        timestamp: new Date().toISOString(),
+        thinking: [...thinkingChain.value],
+      })
+      thinkingChain.value = []
+      isTyping.value = false
+      showSuggestions.value = true
+      scrollToBottom()
+      return
+    }
+
     const response = await chatWithAgent(props.agent.id, { message: userQuery })
     await typeMessage(response.reply)
 
@@ -569,6 +840,38 @@ const renderMarkdown = (text: string): string => {
             </div>
           </div>
 
+          <!-- Director: YouTube 中文资料（Mock Demo） -->
+          <div v-else-if="agent.role.toLowerCase() === 'director' && mockVideos.length > 0" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider">📺 YouTube 中文资源</span>
+              <Badge class="bg-red-500/20 text-red-400 border-none text-[10px]">YouTube</Badge>
+            </div>
+            <p class="text-xs text-zinc-500 mb-4">为你精选的中文学习资料，点击即可跳转观看</p>
+            <div class="grid gap-4">
+              <div v-for="video in mockVideos" :key="video.title" class="group bg-white/5 rounded-xl overflow-hidden border border-white/5 hover:border-red-500/30 transition-all">
+                <!-- 视频封面 -->
+                <div class="relative aspect-video bg-gradient-to-br from-red-900/40 via-zinc-900/30 to-zinc-900/40 overflow-hidden cursor-pointer" @click="openExternalLink(video.url)">
+                  <img :src="video.thumbnail" :alt="video.title" class="w-full h-full object-cover" @error="handleImageError" />
+                  <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/40"></div>
+                  <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="w-16 h-16 rounded-full bg-red-600/80 flex items-center justify-center shadow-lg group-hover:bg-red-500 group-hover:scale-110 transition-all">
+                      <PlayCircle class="h-8 w-8 text-white" />
+                    </div>
+                  </div>
+                  <!-- 时长标签 -->
+                  <div class="absolute bottom-3 right-3 bg-black/70 backdrop-blur-md px-2 py-1 rounded-md text-white text-xs font-mono">{{ video.duration }}</div>
+                  <!-- 平台标签 -->
+                  <div class="absolute top-3 left-3 px-2.5 py-1 bg-red-600/80 text-white rounded-md text-xs font-medium">YouTube</div>
+                </div>
+                <!-- 视频信息 -->
+                <div class="p-4">
+                  <h5 class="font-semibold text-white mb-2 line-clamp-2 text-sm">{{ video.title }}</h5>
+                  <p class="text-slate-400 text-xs line-clamp-2 leading-relaxed">{{ video.description }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Director: 视频资源 -->
           <div v-else-if="agent.role.toLowerCase() === 'director' && allVideos.length > 0" class="space-y-4 bg-[#1a1a1a] rounded-2xl border border-white/5 p-6">
             <h3 class="text-xl font-bold text-cyan-400 mb-4">视频教程推荐</h3>
@@ -735,6 +1038,41 @@ const renderMarkdown = (text: string): string => {
             </div>
             <div :class="['max-w-[80%] p-4 rounded-2xl text-sm leading-relaxed break-words',
               msg.role === 'assistant' ? 'bg-white/5 text-slate-300' : 'bg-blue-600 text-white shadow-lg shadow-blue-900/20']">
+              <!-- 思维链（嵌入在回复气泡上方） -->
+              <div v-if="msg.role === 'assistant' && msg.thinking && msg.thinking.length > 0" class="mb-3 -mx-1">
+                <div class="bg-zinc-900/80 border border-zinc-700/50 rounded-xl overflow-hidden font-mono">
+                  <div class="max-h-56 overflow-y-auto custom-scrollbar">
+                    <template v-for="(entry, i) in msg.thinking" :key="i">
+                      <div v-if="entry.type === 'thought'" class="px-3 py-2 border-b border-white/5">
+                        <p class="text-[11px] text-zinc-400 leading-relaxed italic">{{ entry.content }}</p>
+                      </div>
+                      <div v-else-if="entry.type === 'tool_call'" class="px-3 py-2 border-b border-white/5 bg-amber-500/[0.02]">
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <span class="text-[9px] text-amber-500/70 uppercase tracking-wider font-semibold">Tool</span>
+                          <span class="text-[11px] text-amber-300 font-semibold">{{ entry.content }}</span>
+                          <span v-if="entry.meta" class="text-[9px] text-zinc-600 ml-auto">{{ entry.meta }}</span>
+                        </div>
+                        <div v-if="entry.detail" class="text-[10px] text-zinc-500 mt-1 whitespace-pre-wrap break-all">{{ entry.detail }}</div>
+                      </div>
+                      <div v-else-if="entry.type === 'tool_result'" class="px-3 py-2 border-b border-white/5">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="text-[9px] text-emerald-500/70 uppercase tracking-wider font-semibold">Result</span>
+                          <span v-if="entry.meta" class="text-[9px] text-zinc-600">{{ entry.meta }}</span>
+                        </div>
+                        <pre class="text-[11px] text-emerald-300/70 leading-relaxed whitespace-pre-wrap">{{ entry.content }}</pre>
+                      </div>
+                      <div v-else-if="entry.type === 'prompt'" class="px-3 py-2 border-b border-white/5 bg-purple-500/[0.02]">
+                        <div class="flex items-center gap-2 mb-1">
+                          <span class="text-[9px] text-purple-400/70 uppercase tracking-wider font-semibold">Prompt</span>
+                          <span v-if="entry.meta" class="text-[9px] text-zinc-600">{{ entry.meta }}</span>
+                        </div>
+                        <pre class="text-[11px] text-purple-300/60 leading-relaxed whitespace-pre-wrap bg-black/40 rounded-lg p-2.5 border border-purple-500/5">{{ entry.content }}</pre>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+              </div>
+              <!-- 消息内容 -->
               <div v-if="msg.role === 'assistant' && agent.role.toLowerCase() === 'hacker'" class="font-mono text-green-400">
                 {{ msg.content }}
               </div>
@@ -744,6 +1082,45 @@ const renderMarkdown = (text: string): string => {
               <div v-else>{{ msg.content }}</div>
               <div class="text-xs text-slate-500 mt-2">
                 {{ new Date(msg.timestamp).toLocaleTimeString() }}
+              </div>
+            </div>
+          </div>
+
+          <!-- 思维链 —— 流式出现在本次回复气泡上方 -->
+          <div v-if="thinkingChain.length > 0" class="mb-4 mx-1">
+            <div class="bg-zinc-900/80 border border-zinc-700/50 rounded-2xl overflow-hidden font-mono">
+              <div class="max-h-72 overflow-y-auto custom-scrollbar">
+                <template v-for="(entry, i) in thinkingChain" :key="i">
+                  <!-- Thought -->
+                  <div v-if="entry.type === 'thought'" class="px-4 py-2.5 border-b border-white/5">
+                    <p class="text-xs text-zinc-400 leading-relaxed italic">{{ entry.content }}</p>
+                  </div>
+                  <!-- Tool Call -->
+                  <div v-else-if="entry.type === 'tool_call'" class="px-4 py-2.5 border-b border-white/5 bg-amber-500/[0.02]">
+                    <div class="flex items-center gap-2 flex-wrap">
+                      <span class="text-[10px] text-amber-500/70 uppercase tracking-wider font-semibold">Tool</span>
+                      <span class="text-xs text-amber-300 font-semibold">{{ entry.content }}</span>
+                      <span v-if="entry.meta" class="text-[10px] text-zinc-600 ml-auto">{{ entry.meta }}</span>
+                    </div>
+                    <div v-if="entry.detail" class="text-[11px] text-zinc-500 mt-1 whitespace-pre-wrap break-all">{{ entry.detail }}</div>
+                  </div>
+                  <!-- Tool Result -->
+                  <div v-else-if="entry.type === 'tool_result'" class="px-4 py-2.5 border-b border-white/5">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <span class="text-[10px] text-emerald-500/70 uppercase tracking-wider font-semibold">Result</span>
+                      <span v-if="entry.meta" class="text-[10px] text-zinc-600">{{ entry.meta }}</span>
+                    </div>
+                    <pre class="text-xs text-emerald-300/70 leading-relaxed whitespace-pre-wrap">{{ entry.content }}</pre>
+                  </div>
+                  <!-- LLM Prompt -->
+                  <div v-else-if="entry.type === 'prompt'" class="px-4 py-2.5 border-b border-white/5 bg-purple-500/[0.02]">
+                    <div class="flex items-center gap-2 mb-1.5">
+                      <span class="text-[10px] text-purple-400/70 uppercase tracking-wider font-semibold">Prompt</span>
+                      <span v-if="entry.meta" class="text-[10px] text-zinc-600">{{ entry.meta }}</span>
+                    </div>
+                    <pre class="text-xs text-purple-300/60 leading-relaxed whitespace-pre-wrap bg-black/40 rounded-lg p-3 border border-purple-500/5">{{ entry.content }}</pre>
+                  </div>
+                </template>
               </div>
             </div>
           </div>

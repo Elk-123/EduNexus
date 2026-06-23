@@ -18,7 +18,7 @@ import type { KnowledgeNode } from '@/types/graph'
 
 const learningStore = useLearningStore()
 
-const customGoal = ref('Transformer Architecture')
+const customGoal = ref('人工智能')
 const showAnalysis = ref(true)
 
 const isPlanning = computed(() => learningStore.isPlanning)

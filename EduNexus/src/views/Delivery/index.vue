@@ -38,9 +38,9 @@ onMounted(() => {
       <div class="lg:col-span-8 space-y-6">
         <div class="flex items-center justify-between px-2">
           <h2 class="text-xl font-semibold text-white flex items-center gap-2">
-            个人专属学习流
+            人工智能 · 学习路径
             <span class="text-[10px] bg-blue-500/10 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full uppercase tracking-tighter">
-              Live Feed
+              AI Track
             </span>
           </h2>
         </div>
