@@ -23,6 +23,11 @@ const router = createRouter({
       component: () => import('@/views/OnboardingView.vue')
     },
     {
+      path: '/onboarding/result',
+      name: 'onboarding-result',
+      component: () => import('@/views/OnboardingResultView.vue')
+    },
+    {
       path: '/',
       component: DashboardLayout,
       children: [

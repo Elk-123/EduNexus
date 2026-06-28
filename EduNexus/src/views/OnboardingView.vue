@@ -176,7 +176,7 @@ const handleEnterSystem = async () => {
     const result = await submitOnboarding(payload)
     profileStore.setProfile(result.profile_data, result.version)
     authStore.setOnboardingCompleted()
-    router.push('/')
+    router.push('/onboarding/result')
   } catch (e: any) {
     submitError.value = e?.response?.data?.detail || '画像提交失败，请重试'
   } finally {

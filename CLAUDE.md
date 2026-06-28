@@ -11,6 +11,7 @@
 - **类型检查**: `cd EduNexus && npx vue-tsc --noEmit`
 
 ### 后端
+- **conda**: `conda activate edunexus`
 - **启动服务**: `cd backend && uvicorn app.main:app --reload --port 8001`
 - **初始化数据库**: `cd backend && python -m app.seed`
 - **Docker (PostgreSQL + Redis)**: `cd backend && docker-compose up -d`
