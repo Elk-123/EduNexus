@@ -25,8 +25,8 @@ from ....schemas.factory import GenerateRequest, TaskStatusResponse, ResourceRes
 
 router = APIRouter(prefix="/factory", tags=["factory"])
 
-# 初始化LangChain模型
-LangChainUtils.initialize_model(os.getenv("GOOGLE_API_KEY"), "gemini-2.5-flash")
+# 初始化DeepSeek LangChain模型
+LangChainUtils.initialize_model(os.getenv("DEEPSEEK_API_KEY"), "deepseek-chat")
 
 # 创建Agent协调器
 agent_coordinator = AgentCoordinator()
@@ -124,8 +124,8 @@ class AgentManager:
 
 ```bash
 # .env 文件
-GOOGLE_API_KEY=your_google_gemini_api_key_here
-GEMINI_MODEL=gemini-2.5-flash
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_MODEL=deepseek-chat
 ```
 
 然后在项目启动时初始化：
@@ -134,8 +134,8 @@ GEMINI_MODEL=gemini-2.5-flash
 # backend/app/main.py
 from app.agents.utils import LangChainUtils
 
-# 初始化LangChain
-LangChainUtils.initialize_model(os.getenv("GOOGLE_API_KEY"))
+# 初始化DeepSeek LangChain
+LangChainUtils.initialize_model(os.getenv("DEEPSEEK_API_KEY"))
 ```
 
 ## 5. WebSocket集成示例

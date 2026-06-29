@@ -1,16 +1,22 @@
 """
-Agent协调器 - 负责管理所有Agent的执行流程
+Agent协调器 - 负责管理所有Agent的执行流程，支持上下文累积传递
 """
 import uuid
-from typing import List, Dict, Any
-from . import (
+import json
+import logging
+from datetime import datetime
+from typing import List, Dict, Any, Optional
+from ..types import (
     AgentConfig, AgentContext, AgentExecutionResult, AgentStatusInfo,
     AgentStatus, AgentType
 )
 from ..base.BaseAgent import BaseAgent
 
+logger = logging.getLogger("edunexus.agents")
+
+
 class AgentCoordinator:
-    """Agent协调器"""
+    """Agent协调器 — 顺序执行Agent并累积传递上下文"""
 
     def __init__(self):
         self.agents: Dict[str, BaseAgent] = {}
@@ -27,17 +33,37 @@ class AgentCoordinator:
             success_count=0,
             failure_count=0
         )
+        logger.info("Registered agent: %s (%s)", config.id, config.name)
 
-    def execute_pipeline(self, topic: str, context: Dict[str, Any] = None) -> List[AgentExecutionResult]:
-        """执行Agent流水线"""
+    def execute_pipeline(
+        self, topic: str, context: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """执行Agent流水线（同步），支持上下文累积
+
+        Args:
+            topic: 生成主题
+            context: 初始上下文（可选，如用户偏好）
+
+        Returns:
+            {
+                "results": List[AgentExecutionResult],
+                "accumulated_context": Dict[str, Any],  # 所有Agent输出的累积
+                "task_id": str,
+            }
+        """
         results: List[AgentExecutionResult] = []
+
+        # 累积上下文：key=agent_id, value=该Agent产出的content
+        accumulated: Dict[str, Any] = context.copy() if context else {}
+        task_id = self._generate_task_id()
+
         execution_context = AgentContext(
-            task_id=self._generate_task_id(),
+            task_id=task_id,
             topic=topic,
-            context=context
+            context=accumulated
         )
 
-        # 按照特定顺序执行Agent
+        # Agent执行顺序
         agent_order = [
             AgentType.MANAGER,
             AgentType.PROFESSOR,
@@ -51,32 +77,38 @@ class AgentCoordinator:
         for agent_type in agent_order:
             agent = self.agents.get(agent_type.value)
             if not agent:
-                print(f"Agent {agent_type.value} not found")
+                logger.warning("Agent %s not registered, skipping", agent_type.value)
                 continue
 
             try:
-                # 更新Agent状态
                 self._update_agent_status(agent_type.value, AgentStatus.RUNNING)
 
                 start_time = datetime.now()
                 result = agent.execute(execution_context)
                 end_time = datetime.now()
 
+                # 使用协调器测量的墙钟时间（毫秒）
                 result.duration = int((end_time - start_time).total_seconds() * 1000)
-
                 results.append(result)
 
-                # 更新成功/失败计数
+                # 更新状态
                 if result.status == AgentStatus.SUCCESS:
                     self._increment_success_count(agent_type.value)
+                    # ★ 核心：将成功Agent的输出累积到上下文
+                    if result.result and result.result.content:
+                        accumulated[agent_type.value] = result.result.content
+                        execution_context.context = accumulated
                 else:
                     self._increment_failure_count(agent_type.value)
 
-                # 更新Agent状态
                 self._update_agent_status(agent_type.value, result.status)
+                logger.debug(
+                    "Agent %s completed: status=%s duration=%dms",
+                    agent_type.value, result.status, result.duration
+                )
 
             except Exception as error:
-                print(f"Error executing agent {agent_type.value}: {error}")
+                logger.error("Error executing agent %s: %s", agent_type.value, error)
                 self._update_agent_status(agent_type.value, AgentStatus.ERROR)
                 results.append(AgentExecutionResult(
                     agent_id=agent_type.value,
@@ -85,9 +117,13 @@ class AgentCoordinator:
                     duration=0
                 ))
 
-        return results
+        return {
+            "results": results,
+            "accumulated_context": accumulated,
+            "task_id": task_id,
+        }
 
-    def get_agent_status(self, agent_id: str) -> AgentStatusInfo:
+    def get_agent_status(self, agent_id: str) -> Optional[AgentStatusInfo]:
         """获取Agent状态"""
         return self.agent_states.get(agent_id)
 

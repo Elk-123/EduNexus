@@ -80,8 +80,8 @@ backend/app/agents/
 ```python
 from app.agents.utils import LangChainUtils
 
-# 初始化Google Gemini模型
-LangChainUtils.initialize_model('YOUR_GOOGLE_API_KEY', 'gemini-2.5-flash')
+# 初始化DeepSeek模型
+LangChainUtils.initialize_model('YOUR_DEEPSEEK_API_KEY', 'deepseek-chat')
 ```
 
 ### 2. 创建并注册Agent
@@ -154,7 +154,7 @@ from app.agents import AgentCoordinator, LangChainUtils
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 # 初始化LangChain
-LangChainUtils.initialize_model(os.getenv("GOOGLE_API_KEY"))
+LangChainUtils.initialize_model(os.getenv("DEEPSEEK_API_KEY"))
 
 # 创建协调器
 agent_coordinator = AgentCoordinator()

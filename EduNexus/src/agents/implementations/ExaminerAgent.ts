@@ -3,24 +3,38 @@
  * 负责生成测验题目和评估材料
  */
 import { BaseAgent } from '../base/BaseAgent';
-import { AgentConfig, AgentContext, AgentExecutionResult } from '../types';
+import { AgentConfig, AgentContext, AgentExecutionResult, ExecutionStatus } from '../types';
 import { LangChainUtils } from '../utils/LangChainUtils';
 
 export class ExaminerAgent extends BaseAgent {
   private static readonly PROMPT_TEMPLATE = `
 你是一个经验丰富的教育评估专家，专门负责设计高质量的测验题目。
-请根据以下主题生成一套评估材料：
+请根据以下信息生成一套评估材料：
 
 主题: {topic}
+参考上下文（上游Agent输出的教学内容）: {context}
 
-你需要生成以下内容：
-1. 选择题：3道题目，每道题包含4个选项和正确答案
-2. 简答题：2道开放性问题
+请严格以JSON格式返回（不要包含任何其他文字）：
+\`\`\`json
+{
+  "questions": [
+    {
+      "question": "题目内容",
+      "options": ["A. 选项A", "B. 选项B", "C. 选项C", "D. 选项D"],
+      "answer": "B",
+      "explanation": "解析说明"
+    }
+  ],
+  "essayQuestions": [
+    {
+      "question": "简答题内容",
+      "maxPoints": 10
+    }
+  ]
+}
+\`\`\`
 
-题目要求：
-- 选择题难度适中，涵盖核心知识点
-- 简答题需要考察学生的理解深度
-- 题目表述清晰，无歧义
+要求：至少3道选择题和2道简答题，难度适中，涵盖核心知识点。
 `;
 
   constructor(config: AgentConfig = {
@@ -34,77 +48,48 @@ export class ExaminerAgent extends BaseAgent {
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
     try {
       const promptTemplate = LangChainUtils.createPromptTemplate(ExaminerAgent.PROMPT_TEMPLATE);
-      const result = await LangChainUtils.executeChain(promptTemplate, {
-        topic: context.topic
+      const llmResponse = await LangChainUtils.executeChain(promptTemplate, {
+        topic: context.topic,
+        context: JSON.stringify(context.context || {}, null, 2),
       });
 
+      const parsed = LangChainUtils.tryParseJson(llmResponse);
+      let content: any;
+      if (parsed) {
+        content = {
+          questions: parsed.questions || [],
+          essayQuestions: parsed.essayQuestions || [],
+        };
+      } else {
+        content = {
+          questions: [],
+          essayQuestions: [{ question: llmResponse.trim(), maxPoints: 10 }],
+        };
+      }
+
+      this._recordSuccess(context.topic);
       return {
         agentId: this.config.id,
-        status: 'success',
+        status: ExecutionStatus.SUCCESS,
         result: {
-          content: {
-            questions: [
-              {
-                question: `关于${context.topic}的基础问题`,
-                options: ["选项A", "选项B", "选项C", "选项D"],
-                answer: "选项B",
-                explanation: "这是关于基础概念的题目"
-              },
-              {
-                question: `关于${context.topic}的进阶问题`,
-                options: ["选项A", "选项B", "选项C", "选项D"],
-                answer: "选项C",
-                explanation: "这是需要综合理解的问题"
-              },
-              {
-                question: `关于${context.topic}的高级问题`,
-                options: ["选项A", "选项B", "选项C", "选项D"],
-                answer: "选项A",
-                explanation: "这是考验应用能力的问题"
-              }
-            ],
-            essayQuestions: [
-              {
-                question: `请阐述${context.topic}的核心思想`,
-                maxPoints: 10
-              },
-              {
-                question: `结合实例说明${context.topic}的应用`,
-                maxPoints: 15
-              }
-            ]
-          },
+          content,
           type: 'quiz',
           timestamp: new Date(),
           log: [`成功生成测验材料: ${context.topic}`]
         },
-        duration: 0
+        duration: Date.now() - startTime
       };
     } catch (error) {
+      this._recordFailure(context.topic);
       return {
         agentId: this.config.id,
-        status: 'failed',
+        status: ExecutionStatus.ERROR,
         error: error instanceof Error ? error.message : String(error),
-        duration: 0
+        duration: Date.now() - startTime
       };
     }
-  }
-
-  async getStatus(): Promise<AgentStatus> {
-    // 实现获取状态的逻辑
-    return {
-      agentId: this.config.id,
-      status: 'idle',
-      lastUpdated: new Date(),
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  interrupt(): void {
-    // 实现中断逻辑
-    console.log('Examiner agent interrupted');
   }
 }

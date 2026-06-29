@@ -2,29 +2,42 @@
 Hacker Agent - 极客智能体
 负责生成代码示例和编程练习
 """
-from typing import Dict, Any
-from . import BaseAgent, AgentConfig, AgentContext, AgentExecutionResult, AgentResult
-from ..utils.LangChainUtils import LangChainUtils
+import json
 from datetime import datetime
+from ..base.BaseAgent import BaseAgent
+from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
+from ..utils.LangChainUtils import LangChainUtils
+
 
 class HackerAgent(BaseAgent):
-    """极客智能体"""
+    """极客智能体 — 生成代码示例与编程练习"""
 
     PROMPT_TEMPLATE = """
 你是一个经验丰富的程序员和教育专家，专门负责生成编程相关的教学内容。
-请根据以下主题生成一套编程教学材料：
+请根据以下信息生成一套编程教学材料：
 
 主题: {topic}
+参考上下文（上游Agent输出的教学内容）: {context}
 
-你需要生成以下内容：
-1. 代码示例：一个完整的可运行代码片段
-2. 代码说明：详细解释代码的功能和实现方式
-3. 练习题目：2个编程练习题，包含要求和参考答案
+请严格以JSON格式返回（不要包含任何其他文字）：
+```json
+{
+  "title": "代码示例标题",
+  "description": "代码功能描述",
+  "code": "完整的可运行代码（包含注释）",
+  "expected_output": "预期输出结果",
+  "exercises": [
+    {
+      "title": "练习标题",
+      "description": "练习描述",
+      "requirement": "练习要求",
+      "hint": "提示"
+    }
+  ]
+}
+```
 
-代码要求：
-- 代码应该清晰、简洁、易懂
-- 包含必要的注释
-- 符合最佳实践
+要求：代码清晰简洁，包含必要注释，提供至少2个练习题。
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -39,63 +52,51 @@ class HackerAgent(BaseAgent):
         super().__init__(config)
 
     def execute(self, context: AgentContext) -> AgentExecutionResult:
-        """执行任务"""
+        start_time = datetime.now()
         try:
             prompt_template = LangChainUtils.create_prompt_template(self.PROMPT_TEMPLATE)
-            result = LangChainUtils.execute_chain(prompt_template, {
-                "topic": context.topic
+            llm_response = LangChainUtils.execute_chain(prompt_template, {
+                "topic": context.topic,
+                "context": json.dumps(context.context or {}, ensure_ascii=False, indent=2),
             })
 
+            parsed = LangChainUtils.try_parse_json(llm_response)
+            if parsed:
+                content = {
+                    "title": parsed.get("title", f"{context.topic} 编程示例"),
+                    "description": parsed.get("description", ""),
+                    "code": parsed.get("code", ""),
+                    "expected_output": parsed.get("expected_output", ""),
+                    "exercises": parsed.get("exercises", []),
+                }
+            else:
+                content = {
+                    "title": f"{context.topic} 编程示例",
+                    "description": "LLM 生成的代码内容",
+                    "code": llm_response.strip(),
+                    "expected_output": "",
+                    "exercises": [],
+                }
+
+            self._record_success(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="success",
+                status=AgentStatus.SUCCESS,
                 result=AgentResult(
-                    content={
-                        "title": f"{context.topic} 编程示例",
-                        "description": f"这是一个关于{context.topic}的完整代码示例",
-                        "code": f"// {context.topic} 示例代码\nfunction exampleFunction() {\n  // 实现{context.topic}的核心功能\n  console.log(\"Hello from {context.topic}\");\n  return true;\n}",
-                        "expected_output": "Hello from Transformer Architecture",
-                        "exercises": [
-                            {
-                                "title": "基础练习",
-                                "description": "根据提供的代码实现一个类似功能",
-                                "requirement": "实现一个接受参数的函数",
-                                "hint": "参考示例代码的结构"
-                            },
-                            {
-                                "title": "进阶练习",
-                                "description": "扩展功能以满足额外要求",
-                                "requirement": "添加错误处理机制",
-                                "hint": "考虑使用try-catch语句"
-                            }
-                        ]
-                    },
+                    content=content,
                     type="code",
                     timestamp=datetime.now(),
                     log=[f"成功生成代码内容: {context.topic}"]
                 ),
-                duration=0
+                duration=duration
             )
         except Exception as error:
+            self._record_failure(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="error",
+                status=AgentStatus.ERROR,
                 error=str(error),
-                duration=0
+                duration=duration
             )
-
-    def get_status(self) -> "AgentStatusInfo":
-        """获取状态"""
-        # 实现获取状态的逻辑
-        from ..types import AgentStatusInfo, AgentStatus
-        return AgentStatusInfo(
-            agent_id=self.config.id,
-            status=AgentStatus.IDLE,
-            last_updated=datetime.now(),
-            success_count=0,
-            failure_count=0
-        )
-
-    def interrupt(self) -> None:
-        """中断执行"""
-        print("Hacker agent interrupted")

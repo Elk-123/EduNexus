@@ -23,8 +23,8 @@ import { AgentCoordinator, LangChainUtils } from '@/agents'
 const route = useRoute()
 const factoryStore = useFactoryStore()
 
-// 初始化LangChain模型
-LangChainUtils.initializeModel(import.meta.env.VITE_GEMINI_API_KEY, 'gemini-2.5-flash')
+// 初始化DeepSeek LangChain模型
+LangChainUtils.initializeModel(import.meta.env.VITE_DEEPSEEK_API_KEY, 'deepseek-chat')
 
 // 从URL参数获取默认标签
 const defaultTab = computed(() => {
@@ -197,7 +197,7 @@ export class AgentStatusManager {
 
 ```bash
 # .env 文件
-VITE_GEMINI_API_KEY=your_google_gemini_api_key_here
+VITE_DEEPSEEK_API_KEY=your_deepseek_api_key_here
 ```
 
 然后在项目中导入和初始化：
@@ -206,8 +206,8 @@ VITE_GEMINI_API_KEY=your_google_gemini_api_key_here
 // src/main.ts
 import { LangChainUtils } from '@/agents'
 
-// 初始化LangChain
-LangChainUtils.initializeModel(import.meta.env.VITE_GEMINI_API_KEY)
+// 初始化DeepSeek LangChain
+LangChainUtils.initializeModel(import.meta.env.VITE_DEEPSEEK_API_KEY)
 ```
 
 这个Agent模块完全独立于现有代码，可以在不影响当前功能的情况下进行集成和测试。

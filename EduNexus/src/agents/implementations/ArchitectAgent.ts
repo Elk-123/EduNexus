@@ -3,37 +3,38 @@
  * 负责生成思维导图和知识结构图
  */
 import { BaseAgent } from '../base/BaseAgent';
-import { AgentConfig, AgentContext, AgentExecutionResult } from '../types';
+import { AgentConfig, AgentContext, AgentExecutionResult, ExecutionStatus } from '../types';
 import { LangChainUtils } from '../utils/LangChainUtils';
 
 export class ArchitectAgent extends BaseAgent {
   private static readonly PROMPT_TEMPLATE = `
 你是一个专业的知识架构师，专门负责将复杂主题转化为清晰的思维导图结构。
-请根据以下主题生成一个思维导图结构：
+请根据以下信息生成一个思维导图结构：
 
 主题: {topic}
+参考上下文（上游Agent输出）: {context}
 
-你需要生成一个包含根节点和多个子节点的思维导图结构，格式如下：
+请严格以JSON格式返回（不要包含任何其他文字）：
+\`\`\`json
 {
   "root": "主题根节点",
   "children": [
     {
-      "name": "子节点1",
+      "name": "一级分支1",
       "children": [
-        {
-          "name": "子节点1.1",
-          "children": []
-        }
+        {"name": "二级分支1.1", "children": []},
+        {"name": "二级分支1.2", "children": []}
       ]
     },
     {
-      "name": "子节点2",
+      "name": "一级分支2",
       "children": []
     }
   ]
 }
+\`\`\`
 
-请确保结构清晰，层次分明，便于理解和记忆。
+请确保结构清晰，层次分明（至少2层深度），便于理解和记忆。
 `;
 
   constructor(config: AgentConfig = {
@@ -47,64 +48,51 @@ export class ArchitectAgent extends BaseAgent {
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
     try {
       const promptTemplate = LangChainUtils.createPromptTemplate(ArchitectAgent.PROMPT_TEMPLATE);
-      const result = await LangChainUtils.executeChain(promptTemplate, {
-        topic: context.topic
+      const llmResponse = await LangChainUtils.executeChain(promptTemplate, {
+        topic: context.topic,
+        context: JSON.stringify(context.context || {}, null, 2),
       });
 
+      const parsed = LangChainUtils.tryParseJson(llmResponse);
+      let content: any;
+      if (parsed) {
+        content = {
+          root: parsed.root || context.topic,
+          children: parsed.children || [],
+        };
+      } else {
+        content = {
+          root: context.topic,
+          children: [{
+            name: "LLM 生成内容",
+            children: [{ name: llmResponse.trim().substring(0, 100), children: [] }]
+          }],
+        };
+      }
+
+      this._recordSuccess(context.topic);
       return {
         agentId: this.config.id,
-        status: 'success',
+        status: ExecutionStatus.SUCCESS,
         result: {
-          content: {
-            root: context.topic,
-            children: [
-              {
-                name: "核心概念",
-                children: [
-                  { name: "基本原理", children: [] },
-                  { name: "应用场景", children: [] }
-                ]
-              },
-              {
-                name: "进阶内容",
-                children: [
-                  { name: "高级理论", children: [] },
-                  { name: "实践案例", children: [] }
-                ]
-              }
-            ]
-          },
+          content,
           type: 'mindmap',
           timestamp: new Date(),
           log: [`成功生成架构图: ${context.topic}`]
         },
-        duration: 0
+        duration: Date.now() - startTime
       };
     } catch (error) {
+      this._recordFailure(context.topic);
       return {
         agentId: this.config.id,
-        status: 'failed',
+        status: ExecutionStatus.ERROR,
         error: error instanceof Error ? error.message : String(error),
-        duration: 0
+        duration: Date.now() - startTime
       };
     }
-  }
-
-  async getStatus(): Promise<AgentStatus> {
-    // 实现获取状态的逻辑
-    return {
-      agentId: this.config.id,
-      status: 'idle',
-      lastUpdated: new Date(),
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  interrupt(): void {
-    // 实现中断逻辑
-    console.log('Architect agent interrupted');
   }
 }

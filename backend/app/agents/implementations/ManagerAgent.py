@@ -2,13 +2,15 @@
 Manager Agent - 主控中枢
 负责协调整个Agent流程和任务调度
 """
-from typing import Dict, Any
-from . import BaseAgent, AgentConfig, AgentContext, AgentExecutionResult, AgentResult
-from ..utils.LangChainUtils import LangChainUtils
+import json
 from datetime import datetime
+from ..base.BaseAgent import BaseAgent
+from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
+from ..utils.LangChainUtils import LangChainUtils
+
 
 class ManagerAgent(BaseAgent):
-    """主控中枢"""
+    """主控中枢 — 第一个执行的Agent，负责任务分解"""
 
     PROMPT_TEMPLATE = """
 你是一个智能任务协调员，专门负责规划和管理复杂的多智能体任务。
@@ -16,14 +18,22 @@ class ManagerAgent(BaseAgent):
 
 主题: {topic}
 
-你需要生成以下内容：
-1. 任务分解：将复杂主题分解为7个子任务
-2. 执行优先级：给出每个子任务的执行顺序
-3. 协调要点：说明各智能体间如何配合
+请严格以JSON格式返回（不要包含任何其他文字）：
+```json
+{
+  "tasks": ["子任务1", "子任务2", "子任务3", "子任务4", "子任务5", "子任务6", "子任务7"],
+  "priority": ["professor", "architect", "examiner", "director", "hacker", "reviewer"],
+  "coordination_notes": [
+    "教授智能体应在架构师之前生成基础内容",
+    "考官智能体应基于教授的内容设计题目",
+    "导演智能体需要基于架构师的结构制作脚本"
+  ]
+}
+```
 
 任务规划要求：
-- 确保逻辑连贯性
-- 明确任务边界
+- 将"生成关于 {topic} 的完整教学内容"分解为7个子任务
+- 确保逻辑连贯性，明确任务边界
 - 合理分配给不同的智能体
 """
 
@@ -39,62 +49,48 @@ class ManagerAgent(BaseAgent):
         super().__init__(config)
 
     def execute(self, context: AgentContext) -> AgentExecutionResult:
-        """执行任务"""
+        start_time = datetime.now()
         try:
             prompt_template = LangChainUtils.create_prompt_template(self.PROMPT_TEMPLATE)
-            result = LangChainUtils.execute_chain(prompt_template, {
+            llm_response = LangChainUtils.execute_chain(prompt_template, {
                 "topic": context.topic
             })
 
+            parsed = LangChainUtils.try_parse_json(llm_response)
+            if parsed:
+                content = {
+                    "tasks": parsed.get("tasks", [context.topic]),
+                    "priority": parsed.get("priority", []),
+                    "coordination_notes": parsed.get("coordination_notes", []),
+                    "raw_response": llm_response,
+                }
+            else:
+                content = {
+                    "tasks": [context.topic],
+                    "priority": [],
+                    "coordination_notes": [llm_response.strip()],
+                    "raw_response": llm_response,
+                }
+
+            self._record_success(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="success",
+                status=AgentStatus.SUCCESS,
                 result=AgentResult(
-                    content={
-                        "tasks": [
-                            "分析主题",
-                            "生成学术内容",
-                            "构建知识结构",
-                            "设计测验题目",
-                            "制作视频脚本",
-                            "编写代码示例",
-                            "质量审核"
-                        ],
-                        "priority": ["analysis", "professor", "architect", "examiner", "director", "hacker", "reviewer"],
-                        "coordination_notes": [
-                            "教授智能体应在架构师之前生成基础内容",
-                            "考官智能体应基于教授的内容设计题目",
-                            "导演智能体需要基于架构师的结构制作脚本",
-                            "极客智能体需参考教授的内容编写代码",
-                            "质量审查在最后进行"
-                        ]
-                    },
+                    content=content,
                     type="task_plan",
                     timestamp=datetime.now(),
                     log=[f"成功生成任务计划: {context.topic}"]
                 ),
-                duration=0
+                duration=duration
             )
         except Exception as error:
+            self._record_failure(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="error",
+                status=AgentStatus.ERROR,
                 error=str(error),
-                duration=0
+                duration=duration
             )
-
-    def get_status(self) -> "AgentStatusInfo":
-        """获取状态"""
-        # 实现获取状态的逻辑
-        from ..types import AgentStatusInfo, AgentStatus
-        return AgentStatusInfo(
-            agent_id=self.config.id,
-            status=AgentStatus.IDLE,
-            last_updated=datetime.now(),
-            success_count=0,
-            failure_count=0
-        )
-
-    def interrupt(self) -> None:
-        """中断执行"""
-        print("Manager agent interrupted")

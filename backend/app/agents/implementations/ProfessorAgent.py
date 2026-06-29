@@ -2,25 +2,37 @@
 Professor Agent - 教授智能体
 负责生成学术性的、结构化的教学内容
 """
-from typing import Dict, Any
-from . import BaseAgent, AgentConfig, AgentContext, AgentExecutionResult, AgentResult
+import json
+from datetime import datetime
+from ..base.BaseAgent import BaseAgent
+from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
 from ..utils.LangChainUtils import LangChainUtils
 
+
 class ProfessorAgent(BaseAgent):
-    """教授智能体"""
+    """教授智能体 — 生成结构化教学内容"""
 
     PROMPT_TEMPLATE = """
 你是一个资深的教育专家，专门负责生成高质量的教学内容。
-请根据以下主题生成一份结构化的学术性内容：
+请根据以下信息生成一份结构化的学术性内容：
 
 主题: {topic}
+参考上下文（上游Agent输出）: {context}
 
-你需要生成以下内容：
-1. 标题：简洁明了的主题标题
-2. 内容章节：至少3个章节，每个章节包含标题和详细内容
-3. 关键概念：列出该主题中的3个关键概念及其解释
+请严格以JSON格式返回（不要包含任何其他文字）：
+```json
+{
+  "title": "主题标题",
+  "sections": [
+    {"heading": "章节标题", "body": "详细内容（至少100字）"}
+  ],
+  "keyConcepts": [
+    {"name": "概念名称", "explanation": "概念解释"}
+  ]
+}
+```
 
-请确保内容具有教育价值，逻辑清晰，适合学生学习使用。
+请确保内容具有教育价值，逻辑清晰，包含至少3个章节和3个关键概念。
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -35,68 +47,47 @@ class ProfessorAgent(BaseAgent):
         super().__init__(config)
 
     def execute(self, context: AgentContext) -> AgentExecutionResult:
-        """执行任务"""
+        start_time = datetime.now()
         try:
-                <thought>需要检索学术论文支持内容生成</thought>
-                content = f"<thought>需要检索学术论文支持内容生成</thought>\n" + json.dumps({
-                    "title": f"{context.topic} 深度解析",
-                    "sections": [
-                        {"heading": "背景", "body": f"基于 {search_results[0]['title']}"}
-                    ]
-                })
+            prompt_template = LangChainUtils.create_prompt_template(self.PROMPT_TEMPLATE)
+            llm_response = LangChainUtils.execute_chain(prompt_template, {
+                "topic": context.topic,
+                "context": json.dumps(context.context or {}, ensure_ascii=False, indent=2),
+            })
 
+            parsed = LangChainUtils.try_parse_json(llm_response)
+            if parsed:
+                content = {
+                    "title": parsed.get("title", f"关于{context.topic}的学术解析"),
+                    "sections": parsed.get("sections", []),
+                    "keyConcepts": parsed.get("keyConcepts", []),
+                }
+            else:
+                content = {
+                    "title": f"关于{context.topic}的学术解析",
+                    "sections": [{"heading": "LLM 生成内容", "body": llm_response.strip()}],
+                    "keyConcepts": [],
+                }
+
+            self._record_success(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="success",
+                status=AgentStatus.SUCCESS,
                 result=AgentResult(
-                    content={
-                        "title": f"关于{context.topic}的学术解析",
-                        "sections": [
-                            {
-                                "heading": "引言",
-                                "body": f"这是一个关于{context.topic}的详细介绍。"
-                            },
-                            {
-                                "heading": "核心概念",
-                                "body": f"我们将深入探讨{context.topic}的核心要素。"
-                            },
-                            {
-                                "heading": "应用实例",
-                                "body": f"下面我们将通过实际案例来展示{context.topic}的应用。"
-                            }
-                        ],
-                        "keyConcepts": [
-                            "概念1",
-                            "概念2",
-                            "概念3"
-                        ]
-                    },
+                    content=content,
                     type="academic_content",
                     timestamp=datetime.now(),
                     log=[f"成功生成教授内容: {context.topic}"]
                 ),
-                duration=0
+                duration=duration
             )
         except Exception as error:
+            self._record_failure(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="error",
+                status=AgentStatus.ERROR,
                 error=str(error),
-                duration=0
+                duration=duration
             )
-
-    def get_status(self) -> "AgentStatusInfo":
-        """获取状态"""
-        # 实现获取状态的逻辑
-        from ..types import AgentStatusInfo, AgentStatus
-        return AgentStatusInfo(
-            agent_id=self.config.id,
-            status=AgentStatus.IDLE,
-            last_updated=datetime.now(),
-            success_count=0,
-            failure_count=0
-        )
-
-    def interrupt(self) -> None:
-        """中断执行"""
-        print("Professor agent interrupted")

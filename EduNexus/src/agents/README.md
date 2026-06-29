@@ -80,8 +80,8 @@ src/agents/
 ```typescript
 import { LangChainUtils } from '@/agents';
 
-// 初始化Google Gemini模型
-LangChainUtils.initializeModel('YOUR_GOOGLE_API_KEY', 'gemini-2.5-flash');
+// 初始化DeepSeek模型
+LangChainUtils.initializeModel('YOUR_DEEPSEEK_API_KEY', 'deepseek-chat');
 ```
 
 ### 2. 创建并注册Agent

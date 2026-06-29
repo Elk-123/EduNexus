@@ -1,7 +1,7 @@
 /**
- * Agent协调器 - 负责管理所有Agent的执行流程
+ * Agent协调器 - 负责管理所有Agent的执行流程，支持上下文累积传递
  */
-import { AgentConfig, AgentContext, AgentExecutionResult, AgentStatus } from '../types';
+import { AgentContext, AgentExecutionResult, AgentStatus, AgentStatusValue, ExecutionStatus } from '../types';
 import { BaseAgent } from '../base/BaseAgent';
 
 export class AgentCoordinator {
@@ -16,22 +16,40 @@ export class AgentCoordinator {
     this.agents.set(config.id, agent);
     this.agentStates.set(config.id, {
       agentId: config.id,
-      status: 'idle',
+      status: AgentStatusValue.IDLE,
       lastUpdated: new Date(),
       successCount: 0,
       failureCount: 0
     });
+    console.log(`[AgentCoordinator] Registered agent: ${config.id} (${config.name})`);
   }
 
   /**
-   * 执行Agent流水线
+   * 执行Agent流水线（异步），支持上下文累积
+   *
+   * 每个Agent成功后，其输出被累积到 executionContext.context，
+   * 下游Agent可以引用上游的输出。
+   *
+   * @returns { results, accumulatedContext, taskId }
    */
-  async executePipeline(topic: string, context?: Record<string, any>): Promise<AgentExecutionResult[]> {
+  async executePipeline(
+    topic: string,
+    initialContext?: Record<string, any>
+  ): Promise<{
+    results: AgentExecutionResult[];
+    accumulatedContext: Record<string, any>;
+    taskId: string;
+  }> {
     const results: AgentExecutionResult[] = [];
+    const taskId = this.generateTaskId();
+
+    // 累积上下文：key=agentId, value=该Agent产出的content
+    const accumulated: Record<string, any> = initialContext ? { ...initialContext } : {};
+
     const executionContext: AgentContext = {
-      taskId: this.generateTaskId(),
+      taskId,
       topic,
-      context
+      context: accumulated
     };
 
     // 按照特定顺序执行Agent
@@ -40,45 +58,55 @@ export class AgentCoordinator {
     for (const agentId of agentIds) {
       const agent = this.agents.get(agentId);
       if (!agent) {
-        console.warn(`Agent ${agentId} not found`);
+        console.warn(`[AgentCoordinator] Agent ${agentId} not registered, skipping`);
         continue;
       }
 
       try {
-        // 更新Agent状态
-        this.updateAgentStatus(agentId, 'running');
+        this.updateAgentStatus(agentId, AgentStatusValue.RUNNING);
 
         const startTime = Date.now();
         const result = await agent.execute(executionContext);
         const endTime = Date.now();
 
+        // 使用协调器测量的墙钟时间（毫秒）
         result.duration = endTime - startTime;
-
         results.push(result);
 
-        // 更新成功计数
-        if (result.status === 'success') {
+        // 更新状态
+        if (result.status === ExecutionStatus.SUCCESS) {
           this.incrementSuccessCount(agentId);
+          // ★ 核心：将成功Agent的输出累积到上下文
+          if (result.result?.content) {
+            accumulated[agentId] = result.result.content;
+            executionContext.context = { ...accumulated };
+          }
         } else {
           this.incrementFailureCount(agentId);
         }
 
-        // 更新Agent状态
-        this.updateAgentStatus(agentId, result.status === 'success' ? 'success' : 'error');
+        this.updateAgentStatus(
+          agentId,
+          result.status === ExecutionStatus.SUCCESS ? AgentStatusValue.SUCCESS : AgentStatusValue.ERROR
+        );
+
+        console.log(
+          `[AgentCoordinator] Agent ${agentId} completed: status=${result.status} duration=${result.duration}ms`
+        );
 
       } catch (error) {
-        console.error(`Error executing agent ${agentId}:`, error);
-        this.updateAgentStatus(agentId, 'error');
+        console.error(`[AgentCoordinator] Error executing agent ${agentId}:`, error);
+        this.updateAgentStatus(agentId, AgentStatusValue.ERROR);
         results.push({
           agentId,
-          status: 'failed',
+          status: ExecutionStatus.ERROR,
           error: error instanceof Error ? error.message : String(error),
           duration: 0
         });
       }
     }
 
-    return results;
+    return { results, accumulatedContext: accumulated, taskId };
   }
 
   /**
@@ -98,7 +126,7 @@ export class AgentCoordinator {
   /**
    * 更新Agent状态
    */
-  private updateAgentStatus(agentId: string, status: AgentStatus['status']): void {
+  private updateAgentStatus(agentId: string, status: AgentStatusValue): void {
     const agentStatus = this.agentStates.get(agentId);
     if (agentStatus) {
       agentStatus.status = status;
@@ -130,6 +158,6 @@ export class AgentCoordinator {
    * 生成任务ID
    */
   private generateTaskId(): string {
-    return `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `task_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

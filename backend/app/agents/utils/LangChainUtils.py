@@ -1,52 +1,152 @@
 """
-LangChain集成工具类
+LangChain集成工具类 - DeepSeek版本
+
+需要安装 langchain-openai 和 langchain-core:
+    pip install langchain-openai langchain-core
 """
-import os
-from typing import Dict, Any
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnableSequence
-from langchain_core.messages import HumanMessage, SystemMessage
+import json
+import re
+import threading
+import logging
+from typing import Dict, Any, Optional
+
+logger = logging.getLogger("edunexus.agents")
+
+_model = None
+_model_lock = threading.Lock()
+
+# 延迟导入
+ChatOpenAI = None
+ChatPromptTemplate = None
+HumanMessage = None
+SystemMessage = None
+
+
+def _ensure_langchain():
+    """延迟加载 LangChain 依赖"""
+    global ChatOpenAI, ChatPromptTemplate, HumanMessage, SystemMessage
+    if ChatOpenAI is not None:
+        return
+    try:
+        from langchain_openai import ChatOpenAI as _ChatOpenAI
+        from langchain_core.prompts import ChatPromptTemplate as _ChatPromptTemplate
+        from langchain_core.messages import HumanMessage as _HumanMessage
+        from langchain_core.messages import SystemMessage as _SystemMessage
+
+        ChatOpenAI = _ChatOpenAI
+        ChatPromptTemplate = _ChatPromptTemplate
+        HumanMessage = _HumanMessage
+        SystemMessage = _SystemMessage
+    except ImportError as e:
+        raise ImportError(
+            "langchain-openai and langchain-core are required. "
+            "Install with: pip install langchain-openai langchain-core"
+        ) from e
+
 
 class LangChainUtils:
-    """LangChain工具类"""
-
-    _model = None
+    """LangChain工具类 (DeepSeek API)"""
 
     @classmethod
-    def initialize_model(cls, api_key: str, model_name: str = "gemini-2.5-flash") -> None:
-        """初始化LangChain模型"""
-        cls._model = ChatGoogleGenerativeAI(
-            model=model_name,
-            google_api_key=api_key,
-            temperature=0.7,
-        )
+    def initialize_model(cls, api_key: str, model_name: str = "deepseek-chat") -> None:
+        """初始化DeepSeek LangChain模型（线程安全）
+
+        Args:
+            api_key: DeepSeek API Key
+            model_name: 模型名称，默认 deepseek-chat
+                        可选: deepseek-chat, deepseek-reasoner
+        """
+        global _model
+        _ensure_langchain()
+        with _model_lock:
+            _model = ChatOpenAI(
+                model=model_name,
+                api_key=api_key,
+                base_url="https://api.deepseek.com",
+                temperature=0.7,
+            )
+            logger.info("LangChain model initialized: %s via DeepSeek API", model_name)
 
     @classmethod
-    def create_prompt_template(cls, template: str) -> ChatPromptTemplate:
+    def _get_model(cls):
+        """获取模型实例"""
+        global _model
+        if _model is None:
+            raise ValueError(
+                "LangChain model not initialized. "
+                "Call LangChainUtils.initialize_model(api_key) first."
+            )
+        return _model
+
+    @classmethod
+    def create_prompt_template(cls, template: str):
         """创建提示模板"""
+        _ensure_langchain()
         return ChatPromptTemplate.from_messages([
-            SystemMessage(content="You are an expert assistant designed to help with educational content creation."),
+            SystemMessage(content=(
+                "You are an expert assistant designed to help with educational content creation. "
+                "Always respond with valid JSON matching the requested schema exactly. "
+                "Do not include explanations outside the JSON structure."
+            )),
             HumanMessage(content=template)
         ])
 
     @classmethod
-    def create_runnable_sequence(cls, prompt_template: ChatPromptTemplate) -> RunnableSequence:
-        """创建可运行序列"""
-        if not cls._model:
-            raise ValueError("LangChain model not initialized. Call LangChainUtils.initialize_model first.")
+    def execute_chain(cls, prompt_template, inputs: Dict[str, Any]) -> str:
+        """执行链式调用 (同步)
 
-        return RunnableSequence.from_entries([
-            prompt_template,
-            cls._model
-        ])
+        Returns:
+            LLM 响应的文本内容
+        """
+        _ensure_langchain()
+        model = cls._get_model()
+        runnable = prompt_template | model
+        result = runnable.invoke(inputs)
+        return str(result.content) if hasattr(result, 'content') else str(result)
 
     @classmethod
-    async def execute_chain(cls, prompt_template: ChatPromptTemplate, inputs: Dict[str, Any]) -> str:
-        """执行链式调用"""
-        if not cls._model:
-            raise ValueError("LangChain model not initialized. Call LangChainUtils.initialize_model first.")
+    async def execute_chain_async(cls, prompt_template, inputs: Dict[str, Any]) -> str:
+        """执行链式调用 (异步)
 
-        runnable = cls.create_runnable_sequence(prompt_template)
-        result = runnable.invoke(inputs)
-        return str(result.content)
+        Returns:
+            LLM 响应的文本内容
+        """
+        _ensure_langchain()
+        model = cls._get_model()
+        runnable = prompt_template | model
+        result = await runnable.ainvoke(inputs)
+        return str(result.content) if hasattr(result, 'content') else str(result)
+
+    @classmethod
+    def try_parse_json(cls, text: str) -> Optional[Dict[str, Any]]:
+        """尝试从 LLM 响应中解析 JSON
+
+        支持从 markdown 代码块或纯文本中提取 JSON。
+        """
+        if not text:
+            return None
+
+        # 尝试直接解析
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # 尝试从 markdown ```json ... ``` 代码块中提取
+        json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # 尝试找到第一个 { 和最后一个 }
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(text[start:end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        return None

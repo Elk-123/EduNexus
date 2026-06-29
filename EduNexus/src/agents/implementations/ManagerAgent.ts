@@ -3,7 +3,7 @@
  * 负责协调整个Agent流程和任务调度
  */
 import { BaseAgent } from '../base/BaseAgent';
-import { AgentConfig, AgentContext, AgentExecutionResult } from '../types';
+import { AgentConfig, AgentContext, AgentExecutionResult, ExecutionStatus } from '../types';
 import { LangChainUtils } from '../utils/LangChainUtils';
 
 export class ManagerAgent extends BaseAgent {
@@ -13,14 +13,18 @@ export class ManagerAgent extends BaseAgent {
 
 主题: {topic}
 
-你需要生成以下内容：
-1. 任务分解：将复杂主题分解为7个子任务
-2. 执行优先级：给出每个子任务的执行顺序
-3. 协调要点：说明各智能体间如何配合
+请严格以JSON格式返回（不要包含任何其他文字）：
+\`\`\`json
+{
+  "tasks": ["子任务1", "子任务2", ...],
+  "priority": ["professor", "architect", "examiner", "director", "hacker", "reviewer"],
+  "coordination_notes": ["协调说明1", "协调说明2", ...]
+}
+\`\`\`
 
 任务规划要求：
-- 确保逻辑连贯性
-- 明确任务边界
+- 将"生成关于 {topic} 的完整教学内容"分解为7个子任务
+- 确保逻辑连贯性，明确任务边界
 - 合理分配给不同的智能体
 `;
 
@@ -35,64 +39,51 @@ export class ManagerAgent extends BaseAgent {
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
     try {
       const promptTemplate = LangChainUtils.createPromptTemplate(ManagerAgent.PROMPT_TEMPLATE);
-      const result = await LangChainUtils.executeChain(promptTemplate, {
+      const llmResponse = await LangChainUtils.executeChain(promptTemplate, {
         topic: context.topic
       });
 
+      const parsed = LangChainUtils.tryParseJson(llmResponse);
+      let content: any;
+      if (parsed) {
+        content = {
+          tasks: parsed.tasks || [context.topic],
+          priority: parsed.priority || [],
+          coordination_notes: parsed.coordination_notes || [],
+          raw_response: llmResponse,
+        };
+      } else {
+        content = {
+          tasks: [context.topic],
+          priority: [],
+          coordination_notes: [llmResponse.trim()],
+          raw_response: llmResponse,
+        };
+      }
+
+      this._recordSuccess(context.topic);
       return {
         agentId: this.config.id,
-        status: 'success',
+        status: ExecutionStatus.SUCCESS,
         result: {
-          content: {
-            tasks: [
-              "分析主题",
-              "生成学术内容",
-              "构建知识结构",
-              "设计测验题目",
-              "制作视频脚本",
-              "编写代码示例",
-              "质量审核"
-            ],
-            priority: ["analysis", "professor", "architect", "examiner", "director", "hacker", "reviewer"],
-            coordination_notes: [
-              "教授智能体应在架构师之前生成基础内容",
-              "考官智能体应基于教授的内容设计题目",
-              "导演智能体需要基于架构师的结构制作脚本",
-              "极客智能体需参考教授的内容编写代码",
-              "质量审查在最后进行"
-            ]
-          },
+          content,
           type: 'task_plan',
           timestamp: new Date(),
           log: [`成功生成任务计划: ${context.topic}`]
         },
-        duration: 0
+        duration: Date.now() - startTime
       };
     } catch (error) {
+      this._recordFailure(context.topic);
       return {
         agentId: this.config.id,
-        status: 'failed',
+        status: ExecutionStatus.ERROR,
         error: error instanceof Error ? error.message : String(error),
-        duration: 0
+        duration: Date.now() - startTime
       };
     }
-  }
-
-  async getStatus(): Promise<AgentStatus> {
-    // 实现获取状态的逻辑
-    return {
-      agentId: this.config.id,
-      status: 'idle',
-      lastUpdated: new Date(),
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  interrupt(): void {
-    // 实现中断逻辑
-    console.log('Manager agent interrupted');
   }
 }

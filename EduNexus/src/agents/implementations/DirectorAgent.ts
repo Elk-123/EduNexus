@@ -3,25 +3,34 @@
  * 负责生成视频脚本和多媒体内容
  */
 import { BaseAgent } from '../base/BaseAgent';
-import { AgentConfig, AgentContext, AgentExecutionResult } from '../types';
+import { AgentConfig, AgentContext, AgentExecutionResult, ExecutionStatus } from '../types';
 import { LangChainUtils } from '../utils/LangChainUtils';
 
 export class DirectorAgent extends BaseAgent {
   private static readonly PROMPT_TEMPLATE = `
 你是一个专业的教育视频制作人，擅长将复杂概念转化为易于理解的视频内容。
-请根据以下主题生成一个视频脚本：
+请根据以下信息生成一个视频脚本：
 
 主题: {topic}
+参考上下文（上游Agent输出的教学内容）: {context}
 
-你需要生成以下内容：
-1. 视频场景：至少3个场景，每个场景包含场景编号、标题、视觉描述、旁白内容和时长
-2. 视频总时长：估算总时长
+请严格以JSON格式返回（不要包含任何其他文字）：
+\`\`\`json
+{
+  "scenes": [
+    {
+      "scene_number": 1,
+      "title": "场景标题",
+      "visual": "视觉描述（具体生动的画面描述）",
+      "voiceover": "旁白内容（通俗易懂的讲解）",
+      "duration_seconds": 30
+    }
+  ],
+  "total_duration": 150
+}
+\`\`\`
 
-视频脚本要求：
-- 场景之间逻辑连贯
-- 视觉描述具体生动
-- 旁白内容通俗易懂
-- 适合教育类视频制作
+要求：至少3个场景，场景之间逻辑连贯，适合教育类视频制作。
 `;
 
   constructor(config: AgentConfig = {
@@ -35,71 +44,54 @@ export class DirectorAgent extends BaseAgent {
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
     try {
       const promptTemplate = LangChainUtils.createPromptTemplate(DirectorAgent.PROMPT_TEMPLATE);
-      const result = await LangChainUtils.executeChain(promptTemplate, {
-        topic: context.topic
+      const llmResponse = await LangChainUtils.executeChain(promptTemplate, {
+        topic: context.topic,
+        context: JSON.stringify(context.context || {}, null, 2),
       });
 
+      const parsed = LangChainUtils.tryParseJson(llmResponse);
+      let content: any;
+      if (parsed) {
+        content = {
+          scenes: parsed.scenes || [],
+          total_duration: parsed.total_duration || 0,
+        };
+      } else {
+        content = {
+          scenes: [{
+            scene_number: 1,
+            title: `关于${context.topic}`,
+            visual: "教育动画展示",
+            voiceover: llmResponse.trim(),
+            duration_seconds: 60
+          }],
+          total_duration: 60,
+        };
+      }
+
+      this._recordSuccess(context.topic);
       return {
         agentId: this.config.id,
-        status: 'success',
+        status: ExecutionStatus.SUCCESS,
         result: {
-          content: {
-            scenes: [
-              {
-                scene_number: 1,
-                title: "引入主题",
-                visual: "动画展示主题概念",
-                voiceover: `今天我们要学习的是${context.topic}。这是一个非常重要的概念...`,
-                duration_seconds: 30
-              },
-              {
-                scene_number: 2,
-                title: "核心概念详解",
-                visual: "图表和动画演示",
-                voiceover: "让我们深入了解一下${context.topic}的核心要素...",
-                duration_seconds: 60
-              },
-              {
-                scene_number: 3,
-                title: "应用实例",
-                visual: "现实应用案例",
-                voiceover: "现在我们来看一下${context.topic}在实际中的应用...",
-                duration_seconds: 45
-              }
-            ],
-            total_duration: 135
-          },
+          content,
           type: 'video_script',
           timestamp: new Date(),
           log: [`成功生成视频脚本: ${context.topic}`]
         },
-        duration: 0
+        duration: Date.now() - startTime
       };
     } catch (error) {
+      this._recordFailure(context.topic);
       return {
         agentId: this.config.id,
-        status: 'failed',
+        status: ExecutionStatus.ERROR,
         error: error instanceof Error ? error.message : String(error),
-        duration: 0
+        duration: Date.now() - startTime
       };
     }
-  }
-
-  async getStatus(): Promise<AgentStatus> {
-    // 实现获取状态的逻辑
-    return {
-      agentId: this.config.id,
-      status: 'idle',
-      lastUpdated: new Date(),
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  interrupt(): void {
-    // 实现中断逻辑
-    console.log('Director agent interrupted');
   }
 }

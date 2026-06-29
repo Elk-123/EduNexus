@@ -2,32 +2,41 @@
 Reviewer Agent - 质量审查
 负责审查和优化所有生成内容的质量
 """
-from typing import Dict, Any
-from . import BaseAgent, AgentConfig, AgentContext, AgentExecutionResult, AgentResult
-from ..utils.LangChainUtils import LangChainUtils
+import json
 from datetime import datetime
+from ..base.BaseAgent import BaseAgent
+from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
+from ..utils.LangChainUtils import LangChainUtils
+
 
 class ReviewerAgent(BaseAgent):
-    """质量审查"""
+    """质量审查 — 审查所有上游Agent的输出"""
 
     PROMPT_TEMPLATE = """
 你是一个专业的质量审查专家，负责对教育内容进行审查和优化。
-请根据以下内容生成审查报告：
+请根据以下所有生成的内容进行质量审查：
 
 主题: {topic}
-内容: {content}
 
-你需要生成以下内容：
-1. 一致性检查：检查内容是否前后一致
-2. 质量评分：给出1-10分的评分
-3. 改进建议：提出具体的改进建议
-4. 风险评估：识别潜在的问题或风险
+以下是所有上游Agent生成的完整内容：
+{content}
+
+请严格以JSON格式返回审查报告（不要包含任何其他文字）：
+```json
+{
+  "hallucination_risk": "low/medium/high",
+  "quality_score": 8.5,
+  "suggestions": ["具体改进建议1", "具体改进建议2", "具体改进建议3"],
+  "difficulty_assessment": "难度评估（如：适合初学者/中等偏难/高级）",
+  "review_summary": "总体评价（100字以内）"
+}
+```
 
 审查标准：
-- 准确性
-- 清晰度
-- 完整性
-- 教育价值
+- 准确性：内容是否准确无误
+- 清晰度：表达是否清晰易懂
+- 完整性：是否涵盖主题的各个方面
+- 教育价值：是否适合目标学习者
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -42,55 +51,54 @@ class ReviewerAgent(BaseAgent):
         super().__init__(config)
 
     def execute(self, context: AgentContext) -> AgentExecutionResult:
-        """执行任务"""
+        start_time = datetime.now()
         try:
+            # 将累积的所有上游Agent输出格式化传入 prompt
+            content_json = json.dumps(context.context, ensure_ascii=False, indent=2) if context.context else context.topic
+
             prompt_template = LangChainUtils.create_prompt_template(self.PROMPT_TEMPLATE)
-            result = LangChainUtils.execute_chain(prompt_template, {
+            llm_response = LangChainUtils.execute_chain(prompt_template, {
                 "topic": context.topic,
-                "content": str(context.context) if context.context else ""
+                "content": content_json,
             })
 
+            parsed = LangChainUtils.try_parse_json(llm_response)
+            if parsed:
+                content = {
+                    "hallucination_risk": parsed.get("hallucination_risk", "low"),
+                    "quality_score": float(parsed.get("quality_score", 7.0)),
+                    "suggestions": parsed.get("suggestions", []),
+                    "difficulty_assessment": parsed.get("difficulty_assessment", "中等"),
+                    "review_summary": parsed.get("review_summary", ""),
+                }
+            else:
+                content = {
+                    "hallucination_risk": "low",
+                    "quality_score": 7.0,
+                    "suggestions": [],
+                    "difficulty_assessment": "中等",
+                    "review_summary": llm_response.strip()[:500],
+                }
+
+            self._record_success(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="success",
+                status=AgentStatus.SUCCESS,
                 result=AgentResult(
-                    content={
-                        "hallucination_risk": "low",
-                        "quality_score": 8.5,
-                        "suggestions": [
-                            "可以增加更多实际应用案例",
-                            "部分术语解释可以更详细",
-                            "增加视觉辅助元素的建议"
-                        ],
-                        "difficulty_assessment": "中等偏难",
-                        "review_summary": "整体质量良好，内容结构清晰，但可以进一步完善细节"
-                    },
+                    content=content,
                     type="review",
                     timestamp=datetime.now(),
                     log=[f"成功完成内容审查: {context.topic}"]
                 ),
-                duration=0
+                duration=duration
             )
         except Exception as error:
+            self._record_failure(context.topic)
+            duration = int((datetime.now() - start_time).total_seconds() * 1000)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status="error",
+                status=AgentStatus.ERROR,
                 error=str(error),
-                duration=0
+                duration=duration
             )
-
-    def get_status(self) -> "AgentStatusInfo":
-        """获取状态"""
-        # 实现获取状态的逻辑
-        from ..types import AgentStatusInfo, AgentStatus
-        return AgentStatusInfo(
-            agent_id=self.config.id,
-            status=AgentStatus.IDLE,
-            last_updated=datetime.now(),
-            success_count=0,
-            failure_count=0
-        )
-
-    def interrupt(self) -> None:
-        """中断执行"""
-        print("Reviewer agent interrupted")

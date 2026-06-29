@@ -3,25 +3,36 @@
  * 负责生成代码示例和编程练习
  */
 import { BaseAgent } from '../base/BaseAgent';
-import { AgentConfig, AgentContext, AgentExecutionResult } from '../types';
+import { AgentConfig, AgentContext, AgentExecutionResult, ExecutionStatus } from '../types';
 import { LangChainUtils } from '../utils/LangChainUtils';
 
 export class HackerAgent extends BaseAgent {
   private static readonly PROMPT_TEMPLATE = `
 你是一个经验丰富的程序员和教育专家，专门负责生成编程相关的教学内容。
-请根据以下主题生成一套编程教学材料：
+请根据以下信息生成一套编程教学材料：
 
 主题: {topic}
+参考上下文（上游Agent输出的教学内容）: {context}
 
-你需要生成以下内容：
-1. 代码示例：一个完整的可运行代码片段
-2. 代码说明：详细解释代码的功能和实现方式
-3. 练习题目：2个编程练习题，包含要求和参考答案
+请严格以JSON格式返回（不要包含任何其他文字）：
+\`\`\`json
+{
+  "title": "代码示例标题",
+  "description": "代码功能描述",
+  "code": "完整的可运行代码（包含注释）",
+  "expected_output": "预期输出结果",
+  "exercises": [
+    {
+      "title": "练习标题",
+      "description": "练习描述",
+      "requirement": "练习要求",
+      "hint": "提示"
+    }
+  ]
+}
+\`\`\`
 
-代码要求：
-- 代码应该清晰、简洁、易懂
-- 包含必要的注释
-- 符合最佳实践
+要求：代码清晰简洁，包含必要注释，提供至少2个练习题。
 `;
 
   constructor(config: AgentConfig = {
@@ -35,70 +46,54 @@ export class HackerAgent extends BaseAgent {
   }
 
   async execute(context: AgentContext): Promise<AgentExecutionResult> {
+    const startTime = Date.now();
     try {
       const promptTemplate = LangChainUtils.createPromptTemplate(HackerAgent.PROMPT_TEMPLATE);
-      const result = await LangChainUtils.executeChain(promptTemplate, {
-        topic: context.topic
+      const llmResponse = await LangChainUtils.executeChain(promptTemplate, {
+        topic: context.topic,
+        context: JSON.stringify(context.context || {}, null, 2),
       });
 
+      const parsed = LangChainUtils.tryParseJson(llmResponse);
+      let content: any;
+      if (parsed) {
+        content = {
+          title: parsed.title || `${context.topic} 编程示例`,
+          description: parsed.description || "",
+          code: parsed.code || "",
+          expected_output: parsed.expected_output || "",
+          exercises: parsed.exercises || [],
+        };
+      } else {
+        content = {
+          title: `${context.topic} 编程示例`,
+          description: "LLM 生成的代码内容",
+          code: llmResponse.trim(),
+          expected_output: "",
+          exercises: [],
+        };
+      }
+
+      this._recordSuccess(context.topic);
       return {
         agentId: this.config.id,
-        status: 'success',
+        status: ExecutionStatus.SUCCESS,
         result: {
-          content: {
-            title: `${context.topic} 编程示例`,
-            description: `这是一个关于${context.topic}的完整代码示例`,
-            code: `// ${context.topic} 示例代码
-function exampleFunction() {
-  // 实现${context.topic}的核心功能
-  console.log("Hello from ${context.topic}");
-  return true;
-}`,
-            expected_output: "Hello from Transformer Architecture",
-            exercises: [
-              {
-                title: "基础练习",
-                description: "根据提供的代码实现一个类似功能",
-                requirement: "实现一个接受参数的函数",
-                hint: "参考示例代码的结构"
-              },
-              {
-                title: "进阶练习",
-                description: "扩展功能以满足额外要求",
-                requirement: "添加错误处理机制",
-                hint: "考虑使用try-catch语句"
-              }
-            ]
-          },
+          content,
           type: 'code',
           timestamp: new Date(),
           log: [`成功生成代码内容: ${context.topic}`]
         },
-        duration: 0
+        duration: Date.now() - startTime
       };
     } catch (error) {
+      this._recordFailure(context.topic);
       return {
         agentId: this.config.id,
-        status: 'failed',
+        status: ExecutionStatus.ERROR,
         error: error instanceof Error ? error.message : String(error),
-        duration: 0
+        duration: Date.now() - startTime
       };
     }
-  }
-
-  async getStatus(): Promise<AgentStatus> {
-    // 实现获取状态的逻辑
-    return {
-      agentId: this.config.id,
-      status: 'idle',
-      lastUpdated: new Date(),
-      successCount: 0,
-      failureCount: 0
-    };
-  }
-
-  interrupt(): void {
-    // 实现中断逻辑
-    console.log('Hacker agent interrupted');
   }
 }
