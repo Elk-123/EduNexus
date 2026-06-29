@@ -58,8 +58,11 @@ const isGenerating = computed(() => factoryStore.isGenerating)
 const currentTopic = computed(() => factoryStore.currentTopic)
 const logs = computed(() => factoryStore.logs)
 
-// ===== 模拟资源数据（与后端 _get_fallback 完全一致） =====
-function getMockResources(topic: string): GeneratedResource[] {
+// ═══════════════════════════════════════════════════════════
+//  [已注释] v1.0 getMockResources — 保留兼容，改用 v2.0 API 返回真实数据
+// ═══════════════════════════════════════════════════════════
+/*
+function _v1_getMockResources(topic: string): GeneratedResource[] {
   const taskId = 'mock-task-' + Date.now()
   // 针对 "Transformer 架构中的注意机制" 使用后端完全一致的数据
   if (topic === 'Transformer 架构中的注意机制') {
@@ -470,70 +473,27 @@ if __name__ == "__main__":
     status: 'completed',
   }))
 }
+*/
+// ═══════════════════════════════════════════════════════════
+//  [已注释] v1.0 getMockResources END
+// ═══════════════════════════════════════════════════════════
 
-// 启动模拟生成流水线
-const runWorkflow = async (topic: string) => {
+// ═══════════════════════════════════════════════════════════
+//  [已注释] v1.0 runWorkflow 模拟 — 保留兼容
+// ═══════════════════════════════════════════════════════════
+// const runWorkflow = async (topic: string) => {
+//   ... (前端 setTimeout 模拟 15 秒管道，不再使用)
+// }
+
+// ═══════════════════════════════════════════════════════════
+//  v2.0 runV2Pipeline — 调用后端真实 Agent 管道
+// ═══════════════════════════════════════════════════════════
+const runV2Pipeline = async (topic: string) => {
   selectedAgent.value = null
-  console.log('Starting simulation for topic:', topic)
+  console.log('[V2] Starting pipeline for topic:', topic)
 
-  // 重置状态
-  factoryStore.currentTopic = topic
-  factoryStore.isGenerating = true
-  factoryStore.logs = []
-  factoryStore.resources = []
-  factoryStore.agentsStatus = {}
-  factoryStore.error = null
-
-  // 模拟智能体流水线执行 (总计约 15 秒)
-  const agentSequence = [
-    { id: 'manager',   name: '主控中枢', delay: 800,  color: 'text-purple-400' },
-    { id: 'professor', name: '教授智能体', delay: 2500, color: 'text-blue-400' },
-    { id: 'architect', name: '架构师智能体', delay: 2500, color: 'text-orange-400' },
-    { id: 'examiner',  name: '考官智能体', delay: 2500, color: 'text-pink-400' },
-    { id: 'director',  name: '导演智能体', delay: 2500, color: 'text-cyan-400' },
-    { id: 'hacker',    name: '极客智能体', delay: 2500, color: 'text-green-400' },
-    { id: 'reviewer',  name: '质量审查',   delay: 2000, color: 'text-red-400' },
-  ]
-
-  let elapsed = 0
-  for (const agent of agentSequence) {
-    // 进入 running 状态
-    setTimeout(() => {
-      factoryStore.agentsStatus = { ...factoryStore.agentsStatus, [agent.id]: 'running' }
-      factoryStore.logs.push({
-        id: Date.now() + Math.random(),
-        agent: agent.name,
-        message: `正在分析"${topic}"，调用 Gemini API 生成内容...`,
-        type: 'info'
-      })
-    }, elapsed)
-
-    elapsed += agent.delay
-
-    // 进入 success 状态
-    setTimeout(() => {
-      factoryStore.agentsStatus = { ...factoryStore.agentsStatus, [agent.id]: 'success' }
-      factoryStore.logs.push({
-        id: Date.now() + Math.random(),
-        agent: agent.name,
-        message: `任务完成 ✓ (耗时 ${(agent.delay / 1000).toFixed(1)}s)`,
-        type: 'success'
-      })
-    }, elapsed)
-  }
-
-  // 15 秒后显示结果
-  setTimeout(() => {
-    factoryStore.resources = getMockResources(topic)
-    factoryStore.isGenerating = false
-    factoryStore.logs.push({
-      id: Date.now() + Math.random(),
-      agent: '系统',
-      message: '全部智能体任务执行完毕，资源已就绪 🎉',
-      type: 'success'
-    })
-    console.log('Simulation completed. Resources:', factoryStore.resources)
-  }, 15000)
+  // 调用 store 的 v2 方法（连接 WebSocket + 后端 API）
+  await factoryStore.startV2Generation(topic)
 }
 
 // 调试：监听store状态
@@ -557,7 +517,7 @@ const handleAgentClick = (agent: any) => {
   <div class="flex flex-col h-full bg-[#0b0b0b] text-slate-200 overflow-hidden relative">
     <!-- 顶部输入 -->
     <header class="border-b border-white/5 py-10 px-6 bg-gradient-to-b from-blue-900/5 to-transparent">
-      <TopicInput :isGenerating="isGenerating" @start="runWorkflow" />
+      <TopicInput :isGenerating="isGenerating" @start="runV2Pipeline" />
     </header>
 
     <main class="flex-1 flex overflow-hidden p-6 gap-6">

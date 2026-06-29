@@ -25,74 +25,136 @@ class AgentOrchestrator:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def run_pipeline(self, task: GenerationTask, profile: ProfileDimensions | None = None):
-        """执行多智能体流水线"""
+    # ═══════════════════════════════════════════════════════════
+    #  [已注释] v1.0 run_pipeline — 保留兼容，改用 run_v2_pipeline
+    # ═══════════════════════════════════════════════════════════
+    # async def run_pipeline(self, task: GenerationTask, profile=None):
+    #     """[v1.0] 执行多智能体流水线"""
+    #     ... (旧代码保留，不再使用)
+
+    async def run_v2_pipeline(self, task: GenerationTask, profile=None):
+        """[v2.0] 使用 agents/ 文件夹的新 AgentCoordinator 执行管道"""
+        from app.agents import (
+            AgentCoordinator, LangChainUtils,
+            ManagerAgent, ProfessorAgent, ArchitectAgent,
+            ExaminerAgent, DirectorAgent, HackerAgent, ReviewerAgent,
+            MarkdownGeneratorTool,
+        )
+        from app.core.config import settings
+        import os
+
         task_id = str(task.id)
         topic = task.topic
 
-        # ---- Step 1: Manager 分析 ----
-        await self._update_agent_status(task, "manager", "running")
-        await self._broadcast(task_id, "agent_status", {"agent": "Manager", "status": "running"})
-        await self._broadcast(task_id, "agent_log", {"agent": "Manager", "message": f"正在分析主题: {topic}", "type": "info"})
-        await asyncio.sleep(1.2)  # 模拟分析时间
-        await self._update_agent_status(task, "manager", "success")
-        await self._broadcast(task_id, "agent_status", {"agent": "Manager", "status": "success"})
-        await self._broadcast(task_id, "agent_log", {"agent": "Manager", "message": f"主题分析完成，调度 5 位专家并行生成...", "type": "success"})
+        # 初始化 DeepSeek
+        api_key = getattr(settings, 'DEEPSEEK_API_KEY', None) or os.getenv('DEEPSEEK_API_KEY')
+        if api_key:
+            LangChainUtils.initialize_model(api_key, 'deepseek-chat')
 
-        # ---- Step 2: 5 位专家并行生成 ----
-        async def run_expert(agent_def: dict):
-            agent_id = agent_def["id"]
-            await self._update_agent_status(task, agent_id, "running")
-            await self._broadcast(task_id, "agent_status", {"agent": agent_def["role"], "status": "running"})
-            await self._broadcast(task_id, "agent_log", {"agent": agent_def["role"], "message": f"{agent_def['name']}开始生成内容...", "type": "info"})
+        # 创建协调器
+        coord = AgentCoordinator()
+        coord.register_agent(ManagerAgent())
+        coord.register_agent(ProfessorAgent())
+        coord.register_agent(ArchitectAgent())
+        coord.register_agent(ExaminerAgent())
+        coord.register_agent(DirectorAgent())
+        coord.register_agent(HackerAgent())
+        coord.register_agent(ReviewerAgent())
 
-            # 在函数内部导入，避免循环导入
-            from app.services.content_generator import generator
-            content = await generator.generate_for_agent(agent_id, topic, profile)
+        # 广播包装
+        agent_names = {
+            "manager": "Manager", "professor": "Professor", "architect": "Architect",
+            "examiner": "Examiner", "director": "Director", "hacker": "Hacker",
+            "reviewer": "Reviewer",
+        }
+        original_execute = {}
+        for aid, agent in coord.agents.items():
+            original_execute[aid] = agent.execute
 
-            resource = GeneratedResource(
-                task_id=task.id,
-                student_id=task.student_id,
-                agent_type=agent_id,
-                resource_type=agent_def["resource_type"],
-                content=content,
-                status="completed",
-            )
-            self.db.add(resource)
+            def make_wrapper(aid, orig_fn):
+                def wrapper(context):
+                    name = agent_names.get(aid, aid)
+                    # running
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_status", "agent": name, "status": "running",
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_log", "agent": name,
+                            "message": f"开始执行 {name}...", "type": "info",
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    result = orig_fn(context)
+                    status = "success" if result.status.value == "success" else "error"
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_status", "agent": name, "status": status,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_log", "agent": name,
+                            "message": "完成 ✓" if status == "success" else f"失败: {result.error}",
+                            "type": status, "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    return result
+                return wrapper
+            agent.execute = make_wrapper(aid, original_execute[aid])
 
-            await self._update_agent_status(task, agent_id, "success")
-            await self._broadcast(task_id, "agent_status", {"agent": agent_def["role"], "status": "success"})
-            await self._broadcast(task_id, "agent_log", {"agent": agent_def["role"], "message": f"{agent_def['name']}内容生成完毕", "type": "success"})
+        # 在线程池中执行同步管道
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, coord.execute_pipeline, topic)
 
-        await asyncio.gather(*(run_expert(d) for d in AGENT_DEFS))
+        # 恢复原始 execute
+        for aid, agent in coord.agents.items():
+            agent.execute = original_execute[aid]
 
-        # ---- Step 3: Reviewer 审查 ----
-        await self._update_agent_status(task, "reviewer", "running")
-        await self._broadcast(task_id, "agent_status", {"agent": "Reviewer", "status": "running"})
-        await self._broadcast(task_id, "agent_log", {"agent": "Reviewer", "message": "正在审查全部产出质量...", "type": "info"})
+        # 保存资源到数据库
+        for r in result["results"]:
+            if r.status.value == "success" and r.result:
+                agent_def = next((d for d in AGENT_DEFS if d["id"] == r.agent_id), None)
+                resource_type = agent_def["resource_type"] if agent_def else r.result.type
+                if r.agent_id == "manager":
+                    resource_type = "task_plan"
+                elif r.agent_id == "reviewer":
+                    resource_type = "review_report"
 
-        # 在函数内部导入，避免循环导入
-        from app.services.content_generator import generator
-        review_content = await generator.generate_for_agent("reviewer", topic, profile)
-        review_resource = GeneratedResource(
-            task_id=task.id,
-            student_id=task.student_id,
-            agent_type="reviewer",
-            resource_type="review_report",
-            content=review_content,
-            status="completed",
-        )
-        self.db.add(review_resource)
+                resource = GeneratedResource(
+                    task_id=task.id,
+                    student_id=task.student_id,
+                    agent_type=r.agent_id,
+                    resource_type=resource_type,
+                    content=r.result.content,
+                    status="completed",
+                )
+                self.db.add(resource)
 
-        await self._update_agent_status(task, "reviewer", "success")
-        await self._broadcast(task_id, "agent_status", {"agent": "Reviewer", "status": "success"})
-        await self._broadcast(task_id, "agent_log", {"agent": "Reviewer", "message": "质量审查通过 ✓", "type": "success"})
+        # 生成 Markdown
+        md_report = MarkdownGeneratorTool().generate_combined(result["accumulated_context"])
 
-        # ---- 完成 ----
         task.status = "completed"
         task.updated_at = datetime.utcnow()
         await self.db.commit()
-        await self._broadcast(task_id, "task_complete", {"taskId": task_id, "status": "completed"})
+
+        await ws_manager.broadcast(task_id, {
+            "type": "task_complete", "taskId": task_id, "status": "completed",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        await ws_manager.broadcast(task_id, {
+            "type": "v2_result",
+            "results": [{"agent_id": r.agent_id, "status": r.status.value, "duration": r.duration} for r in result["results"]],
+            "accumulated_context": result["accumulated_context"],
+            "markdown_report": md_report,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        logger.info("[V2] Pipeline completed: %s", task_id)
 
     async def _update_agent_status(self, task: GenerationTask, agent_id: str, status: str):
         current = dict(task.agents_status or {})

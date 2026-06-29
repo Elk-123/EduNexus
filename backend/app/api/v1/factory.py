@@ -22,6 +22,14 @@ from app.schemas.factory import GenerateRequest, TaskStatusResponse, ResourceRes
 from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.content_generator import generator
 
+# ── v2.0 Agent 模块导入 ──────────────────────────────────────
+from app.agents import (
+    AgentCoordinator, LangChainUtils,
+    ManagerAgent, ProfessorAgent, ArchitectAgent,
+    ExaminerAgent, DirectorAgent, HackerAgent, ReviewerAgent,
+    MarkdownGeneratorTool, ToolRegistry,
+)
+
 router = APIRouter()
 logger = logging.getLogger("edunexus.factory")
 
@@ -244,4 +252,198 @@ async def stream_task(
         ws_manager.disconnect(task_id, websocket)
     except Exception:
         ws_manager.disconnect(task_id, websocket)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  v2.0 Agent 端点（使用 agents/ 文件夹的新实现）
+# ═══════════════════════════════════════════════════════════════
+
+_v2_coordinator: AgentCoordinator | None = None
+_v2_coordinator_lock = __import__('threading').Lock()
+
+
+def _get_v2_coordinator() -> AgentCoordinator:
+    """获取或初始化 v2.0 AgentCoordinator 单例"""
+    global _v2_coordinator
+    if _v2_coordinator is not None:
+        return _v2_coordinator
+
+    with _v2_coordinator_lock:
+        if _v2_coordinator is not None:
+            return _v2_coordinator
+
+        # 初始化 DeepSeek 模型
+        from app.core.config import settings
+        api_key = getattr(settings, 'DEEPSEEK_API_KEY', None) or __import__('os').getenv('DEEPSEEK_API_KEY')
+        if api_key:
+            LangChainUtils.initialize_model(api_key, 'deepseek-chat')
+            logger.info("[V2] DeepSeek model initialized")
+        else:
+            logger.warning("[V2] DEEPSEEK_API_KEY not set — agents will use fallback mode")
+
+        _v2_coordinator = AgentCoordinator()
+        _v2_coordinator.register_agent(ManagerAgent())
+        _v2_coordinator.register_agent(ProfessorAgent())
+        _v2_coordinator.register_agent(ArchitectAgent())
+        _v2_coordinator.register_agent(ExaminerAgent())
+        _v2_coordinator.register_agent(DirectorAgent())
+        _v2_coordinator.register_agent(HackerAgent())
+        _v2_coordinator.register_agent(ReviewerAgent())
+        logger.info("[V2] AgentCoordinator initialized with 7 agents")
+
+    return _v2_coordinator
+
+
+@router.post("/generate-v2")
+async def generate_v2(
+    payload: GenerateRequest,
+    current_user: Student = Depends(deps.get_current_user),
+):
+    """[v2.0] 使用新 Agent 引擎生成内容
+
+    直接调用 AgentCoordinator 执行 7 Agent 管道，
+    通过 WebSocket 实时推送状态，完成后返回完整结果。
+    """
+    topic = payload.topic.strip()
+    if not topic:
+        raise HTTPException(status_code=400, detail="主题不能为空")
+
+    task_id = f"task_{__import__('uuid').uuid4().hex[:12]}"
+    logger.info("[V2] Starting generation for topic: %s (task: %s)", topic, task_id)
+
+    # 创建后台任务执行管道
+    bg_task = asyncio.create_task(_run_v2_pipeline(task_id, topic))
+    _background_tasks.add(bg_task)
+    bg_task.add_done_callback(_background_tasks.discard)
+
+    return {
+        "task_id": task_id,
+        "topic": topic,
+        "status": "running",
+        "message": "v2.0 Agent pipeline started",
+    }
+
+
+async def _run_v2_pipeline(task_id: str, topic: str):
+    """后台执行 v2.0 Agent 管道，通过 WebSocket 广播进度"""
+    coordinator = _get_v2_coordinator()
+    agent_names = {
+        "manager": "Manager", "professor": "Professor", "architect": "Architect",
+        "examiner": "Examiner", "director": "Director", "hacker": "Hacker",
+        "reviewer": "Reviewer",
+    }
+
+    try:
+        # 广播开始
+        await ws_manager.broadcast(task_id, {
+            "type": "agent_log",
+            "agent": "System",
+            "message": f"🚀 v2.0 Agent 管道启动: {topic}",
+            "type": "info",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        # 自定义回调：每个 Agent 状态变化时广播
+        import functools
+        original_execute = {}
+
+        for agent_id, agent in coordinator.agents.items():
+            original_execute[agent_id] = agent.execute
+
+            def make_wrapper(aid, orig_fn):
+                def wrapper(context):
+                    name = agent_names.get(aid, aid)
+                    # 广播 running 状态
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_status",
+                            "agent": name,
+                            "status": "running",
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_log",
+                            "agent": name,
+                            "message": f"开始执行 {name}...",
+                            "type": "info",
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+
+                    result = orig_fn(context)
+
+                    # 广播结果
+                    status = "success" if result.status.value == "success" else "error"
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_status",
+                            "agent": name,
+                            "status": status,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    msg = "完成 ✓" if status == "success" else f"失败: {result.error}"
+                    asyncio.run_coroutine_threadsafe(
+                        ws_manager.broadcast(task_id, {
+                            "type": "agent_log",
+                            "agent": name,
+                            "message": msg,
+                            "type": status,
+                            "timestamp": datetime.utcnow().isoformat(),
+                        }), asyncio.get_event_loop()
+                    )
+                    return result
+                return wrapper
+
+            agent.execute = make_wrapper(agent_id, original_execute[agent_id])
+
+        # 执行管道（在线程池中运行同步代码）
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None, coordinator.execute_pipeline, topic
+        )
+
+        # 恢复原始 execute 方法
+        for agent_id, agent in coordinator.agents.items():
+            agent.execute = original_execute[agent_id]
+
+        # 生成 Markdown 报告
+        md_tool = MarkdownGeneratorTool()
+        markdown_report = md_tool.generate_combined(result["accumulated_context"])
+
+        # 广播完成
+        await ws_manager.broadcast(task_id, {
+            "type": "task_complete",
+            "taskId": task_id,
+            "status": "completed",
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+        await ws_manager.broadcast(task_id, {
+            "type": "v2_result",
+            "results": [
+                {
+                    "agent_id": r.agent_id,
+                    "status": r.status.value,
+                    "duration": r.duration,
+                }
+                for r in result["results"]
+            ],
+            "accumulated_context": result["accumulated_context"],
+            "markdown_report": markdown_report,
+            "timestamp": datetime.utcnow().isoformat(),
+        })
+
+        logger.info("[V2] Pipeline completed for task %s", task_id)
+
+    except Exception as e:
+        logger.error("[V2] Pipeline failed for task %s: %s", task_id, e)
+        import traceback
+        traceback.print_exc()
+        await ws_manager.broadcast(task_id, {
+            "type": "error",
+            "message": str(e),
+            "timestamp": datetime.utcnow().isoformat(),
+        })
 
