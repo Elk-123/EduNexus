@@ -76,9 +76,9 @@ async def _safe_run_pipeline(task_id: str, student_id, profile):
                 print(f"[PIPELINE] Task {task_id} not found")
                 return
 
-            print(f"[PIPELINE] Task loaded, running pipeline for topic: {task.topic}")
+            print(f"[PIPELINE] Task loaded, running v2 pipeline for topic: {task.topic}")
             orchestrator = AgentOrchestrator(db)
-            await orchestrator.run_pipeline(task, profile)
+            await orchestrator.run_v2_pipeline(task, profile)
             await db.commit()
             print(f"[PIPELINE] Pipeline completed for task {task_id}")
         except Exception as e:
@@ -170,16 +170,43 @@ async def get_latest_task(
     return response
 
 
-@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+@router.get("/status/{task_id}")
 async def get_task_status(
-    task_id: UUID,
+    task_id: str,
     db: AsyncSession = Depends(deps.get_db),
     current_user: Student = Depends(deps.get_current_user),
 ):
-    """查询生成任务状态"""
+    """查询生成任务状态（兼容 v1 UUID 和 v2 字符串 task_id）"""
+    # v2 任务：检查内存状态
+    if task_id.startswith("task_"):
+        status = _v2_task_status.get(task_id, "running")
+        return {
+            "id": task_id,
+            "topic": "",
+            "status": status,
+            "agents_status": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
+    # v1 任务：查数据库
+    try:
+        uid = UUID(task_id)
+    except ValueError:
+        # 非标准格式，按 v2 处理
+        status = _v2_task_status.get(task_id, "running")
+        return {
+            "id": task_id,
+            "topic": "",
+            "status": status,
+            "agents_status": {},
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+
     result = await db.execute(
         select(GenerationTask).where(
-            GenerationTask.id == task_id,
+            GenerationTask.id == uid,
             GenerationTask.student_id == current_user.id,
         )
     )
@@ -260,6 +287,7 @@ async def stream_task(
 
 _v2_coordinator: AgentCoordinator | None = None
 _v2_coordinator_lock = __import__('threading').Lock()
+_v2_task_status: dict[str, str] = {}  # task_id → status (running/completed/failed)
 
 
 def _get_v2_coordinator() -> AgentCoordinator:
@@ -326,6 +354,7 @@ async def generate_v2(
 
 async def _run_v2_pipeline(task_id: str, topic: str):
     """后台执行 v2.0 Agent 管道，通过 WebSocket 广播进度"""
+    _v2_task_status[task_id] = "running"
     coordinator = _get_v2_coordinator()
     agent_names = {
         "manager": "Manager", "professor": "Professor", "architect": "Architect",
@@ -343,14 +372,16 @@ async def _run_v2_pipeline(task_id: str, topic: str):
             "timestamp": datetime.utcnow().isoformat(),
         })
 
+        # 捕获主线程 event loop（线程池中 get_event_loop() 会失败）
+        main_loop = asyncio.get_running_loop()
+
         # 自定义回调：每个 Agent 状态变化时广播
-        import functools
         original_execute = {}
 
         for agent_id, agent in coordinator.agents.items():
             original_execute[agent_id] = agent.execute
 
-            def make_wrapper(aid, orig_fn):
+            def make_wrapper(aid, orig_fn, loop):
                 def wrapper(context):
                     name = agent_names.get(aid, aid)
                     # 广播 running 状态
@@ -360,7 +391,7 @@ async def _run_v2_pipeline(task_id: str, topic: str):
                             "agent": name,
                             "status": "running",
                             "timestamp": datetime.utcnow().isoformat(),
-                        }), asyncio.get_event_loop()
+                        }), loop
                     )
                     asyncio.run_coroutine_threadsafe(
                         ws_manager.broadcast(task_id, {
@@ -369,7 +400,7 @@ async def _run_v2_pipeline(task_id: str, topic: str):
                             "message": f"开始执行 {name}...",
                             "type": "info",
                             "timestamp": datetime.utcnow().isoformat(),
-                        }), asyncio.get_event_loop()
+                        }), loop
                     )
 
                     result = orig_fn(context)
@@ -382,7 +413,7 @@ async def _run_v2_pipeline(task_id: str, topic: str):
                             "agent": name,
                             "status": status,
                             "timestamp": datetime.utcnow().isoformat(),
-                        }), asyncio.get_event_loop()
+                        }), loop
                     )
                     msg = "完成 ✓" if status == "success" else f"失败: {result.error}"
                     asyncio.run_coroutine_threadsafe(
@@ -392,15 +423,15 @@ async def _run_v2_pipeline(task_id: str, topic: str):
                             "message": msg,
                             "type": status,
                             "timestamp": datetime.utcnow().isoformat(),
-                        }), asyncio.get_event_loop()
+                        }), loop
                     )
                     return result
                 return wrapper
 
-            agent.execute = make_wrapper(agent_id, original_execute[agent_id])
+            agent.execute = make_wrapper(agent_id, original_execute[agent_id], main_loop)
 
         # 执行管道（在线程池中运行同步代码）
-        loop = asyncio.get_event_loop()
+        loop = main_loop
         result = await loop.run_in_executor(
             None, coordinator.execute_pipeline, topic
         )
@@ -414,6 +445,7 @@ async def _run_v2_pipeline(task_id: str, topic: str):
         markdown_report = md_tool.generate_combined(result["accumulated_context"])
 
         # 广播完成
+        _v2_task_status[task_id] = "completed"
         await ws_manager.broadcast(task_id, {
             "type": "task_complete",
             "taskId": task_id,
@@ -438,6 +470,7 @@ async def _run_v2_pipeline(task_id: str, topic: str):
         logger.info("[V2] Pipeline completed for task %s", task_id)
 
     except Exception as e:
+        _v2_task_status[task_id] = "failed"
         logger.error("[V2] Pipeline failed for task %s: %s", task_id, e)
         import traceback
         traceback.print_exc()

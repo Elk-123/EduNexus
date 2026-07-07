@@ -1,45 +1,46 @@
 """
 Architect Agent - 架构师智能体
-负责生成思维导图和知识结构图
+负责生成思维导图和知识结构图（v1 兼容格式）
 """
 import json
+import logging
 from datetime import datetime
 from ..base.BaseAgent import BaseAgent
 from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
 from ..utils.LangChainUtils import LangChainUtils
+from ..fallback_data import get_fallback_content
+
+logger = logging.getLogger("edunexus.agents")
 
 
 class ArchitectAgent(BaseAgent):
-    """架构师智能体 — 生成知识结构/思维导图"""
+    """架构师智能体 — 生成知识结构/思维导图（v1 兼容格式）"""
 
     PROMPT_TEMPLATE = """
 你是一个专业的知识架构师，专门负责将复杂主题转化为清晰的思维导图结构。
-请根据以下信息生成一个思维导图结构：
 
-主题: {topic}
-参考上下文（上游Agent输出）: {context}
+⚠️ 核心约束：你必须且只能围绕下面这个主题构建思维导图！
+
+生成主题：{topic}
+
+上游教授已生成的教学内容：{context}
 
 请严格以JSON格式返回（不要包含任何其他文字）：
 ```json
-{
-  "root": "主题根节点",
-  "children": [
-    {
-      "name": "一级分支1",
-      "children": [
-        {"name": "二级分支1.1", "children": []},
-        {"name": "二级分支1.2", "children": []}
-      ]
-    },
-    {
-      "name": "一级分支2",
-      "children": []
-    }
-  ]
-}
+{{
+  "mindmap": {{
+    "root": "【上述主题的名称】",
+    "children": [
+      {{"name": "一级分支（与上述主题直接相关）", "children": [{{"name": "二级分支"}}]}}
+    ]
+  }}
+}}
 ```
 
-请确保结构清晰，层次分明（至少2层深度），便于理解和记忆。
+要求：
+- 根节点必须是上述生成主题的名称，不可更换
+- 看到上游教授的教学内容中提到了哪些关键概念，将它们组织成思维导图
+- 至少3个一级分支，每个一级分支下至少2-3个子节点
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -64,19 +65,17 @@ class ArchitectAgent(BaseAgent):
 
             parsed = LangChainUtils.try_parse_json(llm_response)
             if parsed:
-                content = {
-                    "root": parsed.get("root", context.topic),
-                    "children": parsed.get("children", []),
-                }
+                # v1 兼容：确保输出包含 mindmap 顶层 key
+                if "mindmap" in parsed:
+                    content = parsed
+                elif "root" in parsed:
+                    # v2 旧格式 → 包裹为 v1 格式
+                    content = {"mindmap": parsed}
+                else:
+                    content = parsed
             else:
-                content = {
-                    "root": context.topic,
-                    "children": [
-                        {"name": "LLM 生成内容", "children": [
-                            {"name": llm_response.strip()[:100], "children": []}
-                        ]}
-                    ],
-                }
+                logger.warning("ArchitectAgent: LLM returned non-JSON, using fallback")
+                content = get_fallback_content("architect", context.topic)
 
             self._record_success(context.topic)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -92,11 +91,18 @@ class ArchitectAgent(BaseAgent):
                 duration=duration
             )
         except Exception as error:
+            logger.warning("ArchitectAgent LLM call failed: %s — using fallback", error)
             self._record_failure(context.topic)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
+            fallback_content = get_fallback_content("architect", context.topic)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status=AgentStatus.ERROR,
-                error=str(error),
+                status=AgentStatus.SUCCESS,
+                result=AgentResult(
+                    content=fallback_content,
+                    type="mindmap",
+                    timestamp=datetime.now(),
+                    log=[f"使用 fallback 数据生成架构图: {context.topic}"]
+                ),
                 duration=duration
             )

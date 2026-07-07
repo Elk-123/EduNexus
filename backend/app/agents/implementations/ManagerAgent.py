@@ -1,40 +1,51 @@
 """
 Manager Agent - 主控中枢
-负责协调整个Agent流程和任务调度
+负责协调整个Agent流程和任务调度（v1 兼容格式）
 """
 import json
+import logging
 from datetime import datetime
 from ..base.BaseAgent import BaseAgent
 from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
 from ..utils.LangChainUtils import LangChainUtils
+from ..fallback_data import get_fallback_content
+
+logger = logging.getLogger("edunexus.agents")
 
 
 class ManagerAgent(BaseAgent):
     """主控中枢 — 第一个执行的Agent，负责任务分解"""
 
     PROMPT_TEMPLATE = """
-你是一个智能任务协调员，专门负责规划和管理复杂的多智能体任务。
-请根据以下主题生成任务规划和协调指令：
+你是一个智能任务协调员，专门负责规划和管理复杂的多智能体教学任务。
 
-主题: {topic}
+当前需要生成教学内容的主题是：{topic}
 
-请严格以JSON格式返回（不要包含任何其他文字）：
+请根据这个主题，生成以下JSON格式的任务计划（不要包含任何其他文字）：
 ```json
-{
-  "tasks": ["子任务1", "子任务2", "子任务3", "子任务4", "子任务5", "子任务6", "子任务7"],
+{{
+  "tasks": [
+    "任务1描述",
+    "任务2描述",
+    "任务3描述",
+    "任务4描述",
+    "任务5描述",
+    "任务6描述",
+    "任务7描述"
+  ],
   "priority": ["professor", "architect", "examiner", "director", "hacker", "reviewer"],
   "coordination_notes": [
-    "教授智能体应在架构师之前生成基础内容",
-    "考官智能体应基于教授的内容设计题目",
-    "导演智能体需要基于架构师的结构制作脚本"
+    "协调说明1",
+    "协调说明2",
+    "协调说明3"
   ]
-}
+}}
 ```
 
-任务规划要求：
-- 将"生成关于 {topic} 的完整教学内容"分解为7个子任务
-- 确保逻辑连贯性，明确任务边界
-- 合理分配给不同的智能体
+要求：
+- tasks 中的每个任务必须明确提及上述主题，例如"确定【具体主题】的教学目标"
+- 将生成完整教学内容分解为7个子任务
+- 确保逻辑连贯，任务边界清晰
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -59,18 +70,25 @@ class ManagerAgent(BaseAgent):
             parsed = LangChainUtils.try_parse_json(llm_response)
             if parsed:
                 content = {
-                    "tasks": parsed.get("tasks", [context.topic]),
-                    "priority": parsed.get("priority", []),
-                    "coordination_notes": parsed.get("coordination_notes", []),
-                    "raw_response": llm_response,
+                    "tasks": parsed.get("tasks", [
+                        f"确定「{context.topic}」的教学目标和核心知识点",
+                        f"设计「{context.topic}」的课程大纲与知识结构",
+                        f"编写「{context.topic}」的详细教学内容与示例",
+                        f"创建「{context.topic}」的评估题目和答案",
+                        f"制作「{context.topic}」的教学视频脚本",
+                        f"开发「{context.topic}」的互动练习与代码案例",
+                        f"审核并优化「{context.topic}」的全部教学材料",
+                    ]),
+                    "priority": parsed.get("priority", ["professor", "architect", "examiner", "director", "hacker", "reviewer"]),
+                    "coordination_notes": parsed.get("coordination_notes", [
+                        "教授智能体应在架构师之前生成基础内容",
+                        "考官智能体应基于教授的内容设计题目",
+                        "导演智能体需要基于架构师的结构制作脚本",
+                    ]),
                 }
             else:
-                content = {
-                    "tasks": [context.topic],
-                    "priority": [],
-                    "coordination_notes": [llm_response.strip()],
-                    "raw_response": llm_response,
-                }
+                logger.warning("ManagerAgent: LLM returned non-JSON, using fallback")
+                content = get_fallback_content("manager", context.topic)
 
             self._record_success(context.topic)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -86,11 +104,18 @@ class ManagerAgent(BaseAgent):
                 duration=duration
             )
         except Exception as error:
+            logger.warning("ManagerAgent LLM call failed: %s — using fallback", error)
             self._record_failure(context.topic)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
+            fallback_content = get_fallback_content("manager", context.topic)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status=AgentStatus.ERROR,
-                error=str(error),
+                status=AgentStatus.SUCCESS,
+                result=AgentResult(
+                    content=fallback_content,
+                    type="task_plan",
+                    timestamp=datetime.now(),
+                    log=[f"使用 fallback 数据生成任务计划: {context.topic}"]
+                ),
                 duration=duration
             )

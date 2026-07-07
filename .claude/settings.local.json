@@ -26,7 +26,22 @@
       "Bash(curl -X POST \"http://localhost:8001/api/v1/graph/plan\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzkwMjQxNjgsInN1YiI6ImZhM2IyNzNkLTg0ZDUtNGYzZi1hMGQ2LTQ2MjZiOTE0ZjM4ZCIsInR5cGUiOiJhY2Nlc3MifQ.vK_tcWDXaQWdNyyzV4g2QzKYCRNklxjOzj3QPQ5D_AE\" -d '{\"goal\": \"深度学习入门\"}')",
       "Bash(curl -s \"http://localhost:8001/health\")",
       "Bash(pip list *)",
-      "Bash(pip show *)"
+      "Bash(pip show *)",
+      "Bash(python -c \"from app.agents import AgentCoordinator, BaseAgent; print\\('v2 agents import OK'\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('FastAPI app import OK'\\)\")",
+      "Bash(python -c \"import os; print\\('DEEPSEEK_API_KEY:', 'SET' if os.getenv\\('DEEPSEEK_API_KEY'\\) else 'NOT SET'\\)\")",
+      "Bash(python -c \"import langchain_openai, langchain_core; print\\('langchain packages OK'\\)\")",
+      "Bash(curl -s -X POST http://localhost:8001/api/v1/auth/login -H \"Content-Type: application/json\" -d '{\"email\":\"test@edunexus.com\",\"password\":\"123456\"}')",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('access_token',''\\)[:50]\\)\")",
+      "Bash(conda activate *)",
+      "Bash(python -c \"import langchain_openai; print\\('langchain OK'\\)\")",
+      "Bash(conda info *)",
+      "Bash(E:/tool/envs/edunexus/python.exe -c \"import langchain_openai; print\\('langchain OK'\\)\")",
+      "Bash(python -c \"import sys; print\\(sys.executable\\)\")",
+      "Bash(E:/tool/python.exe -c \"import langchain_openai; print\\('langchain OK in base'\\)\")",
+      "Bash(uvicorn --version)",
+      "Bash(E:/tool/envs/edunexus/python.exe -m pip install langchain-openai langchain-core)",
+      "Bash(taskkill //F //PID 1804)"
     ]
   }
 }

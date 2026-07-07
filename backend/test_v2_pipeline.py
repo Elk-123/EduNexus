@@ -19,7 +19,7 @@ from app.agents import (
 )
 
 def main():
-    topic = "机器学习基础"
+    topic = "Transformer 架构中的注意机制"
 
     # 初始化 DeepSeek
     api_key = os.getenv("DEEPSEEK_API_KEY")
