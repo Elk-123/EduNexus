@@ -71,14 +71,20 @@ class HackerAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
-            # 验证：code 存在且足够长，且 title 包含 topic 关键词
-            code_ok = isinstance(parsed.get("code"), str) and len(parsed["code"]) > 50
-            title_ok = isinstance(parsed.get("title"), str) and any(
-                kw in parsed["title"] for kw in context.topic.split() if len(kw) >= 2
-            ) if parsed else False
 
-            if parsed and code_ok and title_ok:
-                # 规范化 exercises
+            # 验证：parsed 非空 + code 存在且足够长 + title 包含 topic 关键词
+            if parsed is not None:
+                code = parsed.get("code", "")
+                title = parsed.get("title", "")
+                code_ok = isinstance(code, str) and len(code) > 50
+                title_ok = isinstance(title, str) and any(
+                    kw in title for kw in context.topic.split() if len(kw) >= 2
+                )
+            else:
+                code_ok = False
+                title_ok = False
+
+            if parsed is not None and code_ok and title_ok:
                 exercises = parsed.get("exercises", [])
                 normalized_exercises = []
                 for ex in exercises:
@@ -86,9 +92,12 @@ class HackerAgent(BaseAgent):
                         normalized_exercises.append(ex)
                     elif isinstance(ex, dict):
                         parts = []
-                        if ex.get("title"): parts.append(ex["title"])
-                        if ex.get("description"): parts.append(ex["description"])
-                        if ex.get("requirement"): parts.append(f"要求: {ex['requirement']}")
+                        if ex.get("title"):
+                            parts.append(ex["title"])
+                        if ex.get("description"):
+                            parts.append(ex["description"])
+                        if ex.get("requirement"):
+                            parts.append(f"要求: {ex['requirement']}")
                         normalized_exercises.append(" — ".join(parts) if parts else str(ex))
                     else:
                         normalized_exercises.append(str(ex))

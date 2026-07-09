@@ -49,7 +49,9 @@
       "Bash(python -c \"import certifi; print\\(certifi.where\\(\\)\\)\")",
       "Bash(python -c \"from app.main import app; print\\('main.py OK, routes:', [r.path for r in app.routes if hasattr\\(r, 'path'\\)][:10]\\)\")",
       "Bash(timeout 8 python -m uvicorn app.main:app --port 8002)",
-      "Bash(timeout 8 python -m uvicorn app.main:app --port 8003)"
+      "Bash(timeout 8 python -m uvicorn app.main:app --port 8003)",
+      "Bash(python -c \"from app.agents.implementations.DirectorAgent import DirectorAgent; print\\('DirectorAgent OK'\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('Full app OK'\\)\")"
     ]
   }
 }

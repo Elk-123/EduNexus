@@ -4,6 +4,7 @@ Director Agent - 导演智能体
 """
 import json
 import logging
+import urllib.parse
 from datetime import datetime
 from ..base.BaseAgent import BaseAgent
 from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
@@ -17,12 +18,12 @@ class DirectorAgent(BaseAgent):
     """导演智能体 — 生成教育视频脚本（v1 兼容格式）"""
 
     PROMPT_TEMPLATE = """
-你是一个专业的教育视频制作人，擅长将复杂概念转化为易于理解的视频内容。
+你是一个专业的教育视频制作人，擅长将复杂概念转化为易于理解的视频脚本。
 
 🔴【主题锁定】生成主题：「{topic}」
 🔴 你接下来的所有视频脚本必须且只能围绕「{topic}」制作。
 🔴 每个场景的标题、视觉描述、旁白都必须直接涉及「{topic}」。
-🔴 绝对禁止制作与「{topic}」无关的视频脚本。
+🔴 绝对禁止制作与「{topic}」无关的视频脚本（如主题是注意力机制就不能做黑洞科普）。
 
 上游已生成的教学内容：{context}
 
@@ -31,31 +32,21 @@ class DirectorAgent(BaseAgent):
   "scenes": [
     {{
       "scene_number": 1,
-      "title": "与「{topic}」相关的场景标题",
-      "visual": "画面描述（与{topic}直接相关）",
-      "voiceover": "旁白内容（100-200字，口语化，涉及{topic}）",
-      "duration_seconds": 45,
-      "resources": [
-        {{
-          "type": "video",
-          "title": "与{topic}相关的教学视频标题",
-          "description": "视频简介（与{topic}相关）",
-          "thumbnail": "https://img.youtube.com/vi/xxxxx/maxresdefault.jpg",
-          "url": "https://www.youtube.com/results?search_query={topic}",
-          "duration": "10:00",
-          "platform": "YouTube"
-        }}
-      ]
+      "title": "与「{topic}」直接相关的场景标题",
+      "visual": "画面描述（与{topic}直接相关，描述具体的动画/图示/演示内容）",
+      "voiceover": "旁白内容（100-200字，口语化，必须围绕{topic}展开）",
+      "duration_seconds": 45
     }}
   ]
 }}
 
 要求：
 - 至少3个场景，从入门到深入，逻辑连贯
-- 所有场景标题和旁白必须涉及「{topic}」
-- 每个场景必须包含至少1个 resources 条目
-- 旁白要口语化、生动有趣
+- 所有场景的 title、visual、voiceover 必须直接涉及「{topic}」
+- 旁白要口语化、生动有趣，像3Blue1Brown的风格
+- ⚠️ 不要生成 resources 字段（视频链接会由系统自动生成）
 """
+
 
     def __init__(self, config: AgentConfig = None):
         if config is None:
@@ -80,14 +71,35 @@ class DirectorAgent(BaseAgent):
             parsed = LangChainUtils.try_parse_json(llm_response)
             if parsed and isinstance(parsed.get("scenes"), list) and len(parsed["scenes"]) > 0:
                 scenes = parsed["scenes"]
-                for i, s in enumerate(scenes):
-                    if "scene_number" not in s:
-                        s["scene_number"] = i + 1
-                    if "duration_seconds" not in s:
-                        s["duration_seconds"] = 45
-                    if "resources" not in s:
-                        s["resources"] = []
-                content = {"scenes": scenes}
+                # 验证：至少一个 scene 的 title 包含 topic 关键词
+                has_topic = any(
+                    any(kw in s.get("title", "") for kw in context.topic.split() if len(kw) >= 2)
+                    for s in scenes
+                )
+                if not has_topic:
+                    logger.warning("DirectorAgent: scene titles don't contain topic keywords, using fallback")
+                    content = get_fallback_content("director", context.topic)
+                else:
+                    # 规范化 + 自动生成 YouTube 搜索链接（不让 LLM 编造）
+                    search_query = urllib.parse.quote(context.topic)
+                    for i, s in enumerate(scenes):
+                        if "scene_number" not in s:
+                            s["scene_number"] = i + 1
+                        if "duration_seconds" not in s:
+                            s["duration_seconds"] = 45
+                        # ★ 用真实的 YouTube 搜索链接替代 LLM 幻觉的链接
+                        s["resources"] = [
+                            {
+                                "type": "video",
+                                "title": f"{context.topic} — {s.get('title', f'第{i+1}部分')}",
+                                "description": f"在 YouTube 上搜索关于「{context.topic}」的优质教学视频",
+                                "thumbnail": f"https://img.youtube.com/vi/0/maxresdefault.jpg",
+                                "url": f"https://www.youtube.com/results?search_query={search_query}",
+                                "duration": "10:00",
+                                "platform": "YouTube",
+                            }
+                        ]
+                    content = {"scenes": scenes}
             else:
                 logger.warning("DirectorAgent: output validation failed (missing scenes array), using fallback")
                 content = get_fallback_content("director", context.topic)
