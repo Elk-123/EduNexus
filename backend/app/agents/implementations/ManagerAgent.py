@@ -19,33 +19,35 @@ class ManagerAgent(BaseAgent):
     PROMPT_TEMPLATE = """
 你是一个智能任务协调员，专门负责规划和管理复杂的多智能体教学任务。
 
-当前需要生成教学内容的主题是：{topic}
+🔴【主题锁定】当前需要生成教学内容的主题是：「{topic}」
+🔴 你接下来的所有输出必须且只能围绕「{topic}」这个主题。
+🔴 绝对禁止将主题替换为其他任何话题（如机器学习、编程、数学等）。
+🔴 如果主题是「Transformer注意力机制」，你只能规划关于Transformer注意力机制的任务，不能换成机器学习或深度学习。
 
-请根据这个主题，生成以下JSON格式的任务计划（不要包含任何其他文字）：
+请根据这个主题，生成以下JSON格式的任务计划（严格JSON，不要包含任何其他文字）：
 ```json
 {{
   "tasks": [
-    "任务1描述",
-    "任务2描述",
-    "任务3描述",
-    "任务4描述",
-    "任务5描述",
-    "任务6描述",
-    "任务7描述"
+    "确定「{topic}」的教学目标和核心知识点",
+    "设计「{topic}」的课程大纲与知识结构",
+    "编写「{topic}」的详细教学内容与示例",
+    "创建「{topic}」的评估题目和答案",
+    "制作「{topic}」的教学视频脚本",
+    "开发「{topic}」的互动练习与代码案例",
+    "审核并优化「{topic}」的全部教学材料"
   ],
   "priority": ["professor", "architect", "examiner", "director", "hacker", "reviewer"],
   "coordination_notes": [
-    "协调说明1",
-    "协调说明2",
-    "协调说明3"
+    "教授智能体应在架构师之前生成基础内容",
+    "考官智能体应基于教授的内容设计题目",
+    "导演智能体需要基于架构师的结构制作脚本"
   ]
 }}
 ```
 
 要求：
-- tasks 中的每个任务必须明确提及上述主题，例如"确定【具体主题】的教学目标"
-- 将生成完整教学内容分解为7个子任务
-- 确保逻辑连贯，任务边界清晰
+- tasks 数组必须有恰好7个任务，每个任务必须明确提及「{topic}」
+- priority 必须严格按照 ["professor", "architect", "examiner", "director", "hacker", "reviewer"] 顺序
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -68,26 +70,14 @@ class ManagerAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
-            if parsed:
+            if parsed and isinstance(parsed.get("tasks"), list) and len(parsed["tasks"]) >= 5:
                 content = {
-                    "tasks": parsed.get("tasks", [
-                        f"确定「{context.topic}」的教学目标和核心知识点",
-                        f"设计「{context.topic}」的课程大纲与知识结构",
-                        f"编写「{context.topic}」的详细教学内容与示例",
-                        f"创建「{context.topic}」的评估题目和答案",
-                        f"制作「{context.topic}」的教学视频脚本",
-                        f"开发「{context.topic}」的互动练习与代码案例",
-                        f"审核并优化「{context.topic}」的全部教学材料",
-                    ]),
+                    "tasks": parsed.get("tasks", []),
                     "priority": parsed.get("priority", ["professor", "architect", "examiner", "director", "hacker", "reviewer"]),
-                    "coordination_notes": parsed.get("coordination_notes", [
-                        "教授智能体应在架构师之前生成基础内容",
-                        "考官智能体应基于教授的内容设计题目",
-                        "导演智能体需要基于架构师的结构制作脚本",
-                    ]),
+                    "coordination_notes": parsed.get("coordination_notes", []),
                 }
             else:
-                logger.warning("ManagerAgent: LLM returned non-JSON, using fallback")
+                logger.warning("ManagerAgent: output validation failed (missing tasks), using fallback")
                 content = get_fallback_content("manager", context.topic)
 
             self._record_success(context.topic)

@@ -1,20 +1,19 @@
-import os
-import certifi
-
-os.environ['SSL_CERT_FILE'] = certifi.where()
 import json
-from google.genai import Client
+import logging
+import aiohttp
+
 from app.schemas.profile import OnboardingSubmission, ProfileDimensions
 from app.core.config import settings
+
+logger = logging.getLogger("edunexus")
+
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 
 
 class ProfileAnalyzer:
     def __init__(self):
-        api_key = settings.GOOGLE_API_KEY
-        if api_key:
-            self.client = Client(api_key=api_key)
-        else:
-            self.client = None
+        self.api_key = settings.DEEPSEEK_API_KEY
+        self.model = settings.DEEPSEEK_MODEL
 
     async def analyze_onboarding_data(self, data: OnboardingSubmission) -> ProfileDimensions:
         prompt = f"""
@@ -35,21 +34,43 @@ class ProfileAnalyzer:
         }}
         """
 
-        try:
-            if self.client is None:
-                raise RuntimeError("Gemini API not configured")
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "你是一位资深教育心理学家和AI导师。请严格按照JSON格式输出分析结果。"},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.3,
+            "max_tokens": 1024,
+            "response_format": {"type": "json_object"},
+        }
 
-            response = await self.client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                generation_config={"response_mime_type": "application/json"},
-            )
-            result_dict = json.loads(response.text)
-            return ProfileDimensions(**result_dict)
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        timeout = aiohttp.ClientTimeout(total=60, connect=15, sock_read=30)
+
+        try:
+            logger.info("Calling DeepSeek API for profile analysis")
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    DEEPSEEK_API_URL, json=payload, headers=headers
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        raw_content = data["choices"][0]["message"]["content"].strip()
+                        logger.info(f"DeepSeek profile analysis response (first 300 chars): {raw_content[:300]}")
+                        result_dict = json.loads(raw_content)
+                        return ProfileDimensions(**result_dict)
+                    else:
+                        error_text = await resp.text()
+                        logger.error(f"DeepSeek API error {resp.status}: {error_text[:500]}")
+                        raise RuntimeError(f"DeepSeek API returned {resp.status}")
 
         except Exception as e:
-            import logging
-            logging.getLogger("edunexus").error(f"Gemini Analysis Error: {e}", exc_info=True)
+            logger.error(f"Profile analysis failed: {e}", exc_info=True)
             return ProfileDimensions(
                 knowledge_base_score=50,
                 cognitive_style="均衡型",

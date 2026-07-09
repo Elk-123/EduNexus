@@ -1,18 +1,21 @@
 import json
-from google.genai import Client
+import logging
+import aiohttp
+
 from app.schemas.profile import ProfileDimensions
 from app.core.config import settings
 
+logger = logging.getLogger("edunexus")
+
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+
 
 class PathPlanner:
-    """使用 Gemini 根据学习目标和学生画像生成个性化 DAG 学习路径"""
+    """使用 DeepSeek 根据学习目标和学生画像生成个性化 DAG 学习路径"""
 
     def __init__(self):
-        api_key = settings.GOOGLE_API_KEY
-        if api_key:
-            self.client = Client(api_key=api_key)
-        else:
-            self.client = None
+        self.api_key = settings.DEEPSEEK_API_KEY
+        self.model = settings.DEEPSEEK_MODEL
 
     async def plan_path(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
         profile_context = ""
@@ -74,21 +77,46 @@ class PathPlanner:
         - 第一个节点为 "completed"，第二第三个为 "active"，后续为 "pending"
         """
 
-        if self.client is None:
-            return self._get_fallback(goal, profile)
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "你是一位资深课程设计师和AI教育专家。请严格按照JSON格式输出学习路径规划结果。"},
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0.5,
+            "max_tokens": 4096,
+            "response_format": {"type": "json_object"},
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        timeout = aiohttp.ClientTimeout(total=60, connect=15, sock_read=30)
 
         try:
-            response = await self.client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                config={"response_mime_type": "application/json"},
-            )
-            return json.loads(response.text)
-        except Exception:
+            logger.info(f"Calling DeepSeek API for path planning: {goal}")
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    DEEPSEEK_API_URL, json=payload, headers=headers
+                ) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        raw_content = data["choices"][0]["message"]["content"].strip()
+                        logger.info(f"DeepSeek path planning response (first 300 chars): {raw_content[:300]}")
+                        result = json.loads(raw_content)
+                        return result
+                    else:
+                        error_text = await resp.text()
+                        logger.error(f"DeepSeek API error {resp.status}: {error_text[:500]}")
+                        raise RuntimeError(f"DeepSeek API returned {resp.status}")
+
+        except Exception as e:
+            logger.warning(f"Path planning failed, using fallback: {e}")
             return self._get_fallback(goal, profile)
 
     def _get_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
-        # 根据目标判断是否为人工智能学习路径
         goal_lower = goal.lower()
         ai_keywords = [
             "人工智能", "机器学习", "深度学习",
@@ -106,7 +134,6 @@ class PathPlanner:
     def _get_ai_path_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
         """人工智能学习路径的fallback - 三个阶段设计"""
         nodes = [
-            # 第一阶段：基础储备
             {"id": "ai-math", "label": "数学基础", "type": "standard", "proficiency": 0.8, "status": "completed"},
             {"id": "ai-prog", "label": "编程开发", "type": "standard", "proficiency": 0.8, "status": "completed"},
             {"id": "ai-la", "label": "线性代数", "type": "standard", "proficiency": 0.7, "status": "active"},
@@ -115,8 +142,6 @@ class PathPlanner:
             {"id": "ai-python", "label": "Python核心语法", "type": "standard", "proficiency": 0.8, "status": "active"},
             {"id": "ai-libs", "label": "数据处理库", "type": "standard", "proficiency": 0.6, "status": "pending"},
             {"id": "ai-stage1", "label": "第一阶段：基础储备完成", "type": "milestone", "proficiency": 1.0, "status": "pending"},
-
-            # 第二阶段：核心模型
             {"id": "ai-ml", "label": "经典机器学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
             {"id": "ai-sup", "label": "监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
             {"id": "ai-unsup", "label": "无监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
@@ -126,8 +151,6 @@ class PathPlanner:
             {"id": "ai-nlp", "label": "自然语言处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
             {"id": "ai-audio", "label": "语音信号处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
             {"id": "ai-stage2", "label": "第二阶段：核心模型掌握", "type": "milestone", "proficiency": 1.0, "status": "pending"},
-
-            # 第三阶段：前沿进阶
             {"id": "ai-transformer", "label": "Transformer架构", "type": "standard", "proficiency": 0.1, "status": "pending"},
             {"id": "ai-llm", "label": "大语言模型原理", "type": "standard", "proficiency": 0.1, "status": "pending"},
             {"id": "ai-app", "label": "应用开发层", "type": "standard", "proficiency": 0.1, "status": "pending"},
@@ -143,7 +166,6 @@ class PathPlanner:
         ]
 
         edges = [
-            # 第一阶段内部连接
             {"from": "ai-math", "to": "ai-la", "isDynamic": False},
             {"from": "ai-math", "to": "ai-calc", "isDynamic": False},
             {"from": "ai-math", "to": "ai-stat", "isDynamic": False},
@@ -153,11 +175,7 @@ class PathPlanner:
             {"from": "ai-calc", "to": "ai-stage1", "isDynamic": False},
             {"from": "ai-stat", "to": "ai-stage1", "isDynamic": False},
             {"from": "ai-libs", "to": "ai-stage1", "isDynamic": False},
-
-            # 第一阶段到第二阶段
             {"from": "ai-stage1", "to": "ai-ml", "isDynamic": False},
-
-            # 第二阶段内部连接
             {"from": "ai-ml", "to": "ai-sup", "isDynamic": False},
             {"from": "ai-ml", "to": "ai-unsup", "isDynamic": False},
             {"from": "ai-sup", "to": "ai-dl", "isDynamic": False},
@@ -169,11 +187,7 @@ class PathPlanner:
             {"from": "ai-cv", "to": "ai-stage2", "isDynamic": False},
             {"from": "ai-nlp", "to": "ai-stage2", "isDynamic": False},
             {"from": "ai-audio", "to": "ai-stage2", "isDynamic": False},
-
-            # 第二阶段到第三阶段
             {"from": "ai-stage2", "to": "ai-transformer", "isDynamic": False},
-
-            # 第三阶段内部连接
             {"from": "ai-transformer", "to": "ai-llm", "isDynamic": False},
             {"from": "ai-llm", "to": "ai-app", "isDynamic": False},
             {"from": "ai-llm", "to": "ai-tech", "isDynamic": False},

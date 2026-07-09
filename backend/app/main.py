@@ -1,7 +1,13 @@
+import os
+import certifi
 from contextlib import asynccontextmanager
 import traceback
 from typing import Any
 from datetime import datetime
+
+# 设置 SSL 证书路径（修复 Windows 下 httpx/aiohttp 的 SSL 问题）
+# 注意：必须强制覆盖，因为可能有残留的无效路径
+os.environ['SSL_CERT_FILE'] = certifi.where()
 
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -9,7 +15,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import SQLAlchemyError
-from google.genai import types
 
 from app.api.v1.api import api_router
 from app.core.config import settings

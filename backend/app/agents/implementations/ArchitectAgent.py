@@ -19,28 +19,30 @@ class ArchitectAgent(BaseAgent):
     PROMPT_TEMPLATE = """
 你是一个专业的知识架构师，专门负责将复杂主题转化为清晰的思维导图结构。
 
-⚠️ 核心约束：你必须且只能围绕下面这个主题构建思维导图！
-
-生成主题：{topic}
+🔴【主题锁定】生成主题：「{topic}」
+🔴 你接下来的思维导图必须且只能围绕「{topic}」构建。
+🔴 根节点必须是「{topic}」本身或其核心概念，绝对不可以换成其他主题。
+🔴 如果主题是「Transformer注意力机制」，根节点必须是关于注意力机制的，一级分支必须是QKV、多头注意力、缩放点积等。
 
 上游教授已生成的教学内容：{context}
 
-请严格以JSON格式返回（不要包含任何其他文字）：
-```json
+请严格以JSON格式返回（不要包含任何其他文字，不要markdown代码块标记）：
 {{
   "mindmap": {{
-    "root": "【上述主题的名称】",
+    "root": "root(({topic}))",
     "children": [
-      {{"name": "一级分支（与上述主题直接相关）", "children": [{{"name": "二级分支"}}]}}
+      {{"name": "一级分支（与{topic}直接相关）", "children": [{{"name": "二级分支"}}, {{"name": "二级分支"}}]}},
+      {{"name": "一级分支", "children": [{{"name": "二级分支"}}, {{"name": "二级分支"}}]}},
+      {{"name": "一级分支", "children": [{{"name": "二级分支"}}, {{"name": "二级分支"}}]}}
     ]
   }}
 }}
-```
 
 要求：
-- 根节点必须是上述生成主题的名称，不可更换
+- mindmap.root 必须包含「{topic}」
+- 至少3个一级分支，每个一级分支下至少2个子节点
 - 看到上游教授的教学内容中提到了哪些关键概念，将它们组织成思维导图
-- 至少3个一级分支，每个一级分支下至少2-3个子节点
+- 节点名使用中文，简洁明了（10字以内）
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -64,17 +66,26 @@ class ArchitectAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
+            # ★ 关键修复：严格验证 mindmap 结构
+            content = None
             if parsed:
-                # v1 兼容：确保输出包含 mindmap 顶层 key
-                if "mindmap" in parsed:
-                    content = parsed
-                elif "root" in parsed:
-                    # v2 旧格式 → 包裹为 v1 格式
-                    content = {"mindmap": parsed}
+                if "mindmap" in parsed and isinstance(parsed["mindmap"], dict):
+                    mm = parsed["mindmap"]
+                    if isinstance(mm.get("root"), str) and isinstance(mm.get("children"), list) and len(mm["children"]) > 0:
+                        content = parsed  # 结构完整，通过
+                    else:
+                        logger.warning("ArchitectAgent: mindmap missing root or children, using fallback")
+                elif "root" in parsed and isinstance(parsed.get("children"), list):
+                    # v2 旧格式：直接是 {root, children} → 包裹为 mindmap
+                    if len(parsed["children"]) > 0:
+                        content = {"mindmap": parsed}
+                    else:
+                        logger.warning("ArchitectAgent: root format but empty children, using fallback")
                 else:
-                    content = parsed
-            else:
-                logger.warning("ArchitectAgent: LLM returned non-JSON, using fallback")
+                    logger.warning("ArchitectAgent: parsed JSON lacks mindmap/root structure, using fallback")
+
+            if content is None:
+                logger.warning("ArchitectAgent: output validation failed, using fallback")
                 content = get_fallback_content("architect", context.topic)
 
             self._record_success(context.topic)

@@ -19,32 +19,32 @@ class ProfessorAgent(BaseAgent):
     PROMPT_TEMPLATE = """
 你是一个资深的教育专家，专门负责生成高质量的教学内容。
 
-⚠️ 核心约束：你必须且只能围绕下面这个主题生成内容，绝不要换成其他话题！
-
-生成主题：{topic}
+🔴【主题锁定】生成主题：「{topic}」
+🔴 你接下来的所有输出必须且只能围绕「{topic}」展开。
+🔴 绝对禁止将主题替换为其他话题。即使你认为其他话题更合适，也必须围绕「{topic}」。
+🔴 标题、章节标题、小节内容都必须直接提及「{topic}」及其相关概念。
+🔴 例如：如果主题是「Transformer注意力机制」，你的所有内容必须关于注意力机制，不能变成机器学习概述或深度学习入门。
 
 上游Agent已生成的内容摘要：{context}
 
-请严格以JSON格式返回（不要包含任何其他文字），格式如下：
-```json
+请严格以JSON格式返回（不要包含任何其他文字，不要markdown代码块标记）：
 {{
-  "title": "关于【上述主题】的教学内容标题",
+  "title": "【必须包含「{topic}」关键词】的标题",
   "sections": [
     {{
-      "heading": "章节标题（与上述主题直接相关）",
+      "heading": "与「{topic}」直接相关的章节标题",
       "subsections": [
-        {{"subheading": "小节标题", "body": "小节详细内容（至少150字，必须与上述主题相关）"}}
+        {{"subheading": "小节标题", "body": "小节详细内容（至少150字，必须与「{topic}」直接相关）"}}
       ]
     }}
   ]
 }}
-```
 
 要求：
-- 标题和所有内容必须与上述生成主题直接相关，不可换成其他话题
+- title 必须包含「{topic}」关键词
 - 至少3个章节，每章至少2个小节
 - 每个小节的 body 至少150字，内容深入浅出，有具体例子
-- 参考上游Agent输出的内容，保持一致性
+- 所有内容必须与「{topic}」直接相关，不可偏离
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -68,14 +68,20 @@ class ProfessorAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
-            if parsed:
-                content = {
-                    "title": parsed.get("title", f"关于{context.topic}的深度解析"),
-                    "sections": parsed.get("sections", []),
-                }
+            # 结构验证：必须包含 title 和 sections（且 sections 是非空数组）
+            if parsed and isinstance(parsed.get("title"), str) and isinstance(parsed.get("sections"), list) and len(parsed["sections"]) > 0:
+                # 验证 topic 关键词是否出现在 title 中（宽松检查）
+                title_ok = any(kw in parsed["title"] for kw in context.topic.split() if len(kw) >= 2)
+                if not title_ok:
+                    logger.warning("ProfessorAgent: title doesn't contain topic keywords, using fallback")
+                    content = get_fallback_content("professor", context.topic)
+                else:
+                    content = {
+                        "title": parsed["title"],
+                        "sections": parsed["sections"],
+                    }
             else:
-                # JSON 解析失败，使用 fallback
-                logger.warning("ProfessorAgent: LLM returned non-JSON, using fallback")
+                logger.warning("ProfessorAgent: output validation failed (missing title/sections), using fallback")
                 content = get_fallback_content("professor", context.topic)
 
             self._record_success(context.topic)
@@ -95,11 +101,10 @@ class ProfessorAgent(BaseAgent):
             logger.warning("ProfessorAgent LLM call failed: %s — using fallback", error)
             self._record_failure(context.topic)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
-            # fallback 兜底
             fallback_content = get_fallback_content("professor", context.topic)
             return AgentExecutionResult(
                 agent_id=self.config.id,
-                status=AgentStatus.SUCCESS,  # fallback 也算成功
+                status=AgentStatus.SUCCESS,
                 result=AgentResult(
                     content=fallback_content,
                     type="academic_content",

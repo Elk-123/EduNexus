@@ -19,29 +19,29 @@ class DirectorAgent(BaseAgent):
     PROMPT_TEMPLATE = """
 你是一个专业的教育视频制作人，擅长将复杂概念转化为易于理解的视频内容。
 
-⚠️ 核心约束：你必须且只能围绕下面这个主题制作视频脚本！
-
-生成主题：{topic}
+🔴【主题锁定】生成主题：「{topic}」
+🔴 你接下来的所有视频脚本必须且只能围绕「{topic}」制作。
+🔴 每个场景的标题、视觉描述、旁白都必须直接涉及「{topic}」。
+🔴 绝对禁止制作与「{topic}」无关的视频脚本。
 
 上游已生成的教学内容：{context}
 
-请严格以JSON格式返回（不要包含任何其他文字）：
-```json
+请严格以JSON格式返回（不要包含任何其他文字，不要markdown代码块标记）：
 {{
   "scenes": [
     {{
       "scene_number": 1,
-      "title": "场景标题（与上述主题相关）",
-      "visual": "视觉描述",
-      "voiceover": "旁白内容（100-200字，口语化）",
+      "title": "与「{topic}」相关的场景标题",
+      "visual": "画面描述（与{topic}直接相关）",
+      "voiceover": "旁白内容（100-200字，口语化，涉及{topic}）",
       "duration_seconds": 45,
       "resources": [
         {{
           "type": "video",
-          "title": "相关视频标题",
-          "description": "视频简介",
+          "title": "与{topic}相关的教学视频标题",
+          "description": "视频简介（与{topic}相关）",
           "thumbnail": "https://img.youtube.com/vi/xxxxx/maxresdefault.jpg",
-          "url": "https://www.youtube.com/results?search_query=关键词",
+          "url": "https://www.youtube.com/results?search_query={topic}",
           "duration": "10:00",
           "platform": "YouTube"
         }}
@@ -49,11 +49,10 @@ class DirectorAgent(BaseAgent):
     }}
   ]
 }}
-```
 
 要求：
-- 所有场景必须围绕上述生成主题，不可偏离
 - 至少3个场景，从入门到深入，逻辑连贯
+- 所有场景标题和旁白必须涉及「{topic}」
 - 每个场景必须包含至少1个 resources 条目
 - 旁白要口语化、生动有趣
 """
@@ -79,9 +78,8 @@ class DirectorAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
-            if parsed:
-                scenes = parsed.get("scenes", [])
-                # 确保每个场景有 scene_number
+            if parsed and isinstance(parsed.get("scenes"), list) and len(parsed["scenes"]) > 0:
+                scenes = parsed["scenes"]
                 for i, s in enumerate(scenes):
                     if "scene_number" not in s:
                         s["scene_number"] = i + 1
@@ -91,7 +89,7 @@ class DirectorAgent(BaseAgent):
                         s["resources"] = []
                 content = {"scenes": scenes}
             else:
-                logger.warning("DirectorAgent: LLM returned non-JSON, using fallback")
+                logger.warning("DirectorAgent: output validation failed (missing scenes array), using fallback")
                 content = get_fallback_content("director", context.topic)
 
             self._record_success(context.topic)

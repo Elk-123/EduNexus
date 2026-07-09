@@ -41,7 +41,15 @@
       "Bash(E:/tool/python.exe -c \"import langchain_openai; print\\('langchain OK in base'\\)\")",
       "Bash(uvicorn --version)",
       "Bash(E:/tool/envs/edunexus/python.exe -m pip install langchain-openai langchain-core)",
-      "Bash(taskkill //F //PID 1804)"
+      "Bash(taskkill //F //PID 1804)",
+      "Bash(python -c \"from app.services.profile_analyzer import analyzer; print\\('profile_analyzer OK'\\)\")",
+      "Bash(python -c \"from app.services.path_planner import planner; print\\('path_planner OK'\\)\")",
+      "Bash(python -c \"from app.api.v1.tutor import router; print\\('tutor OK'\\)\")",
+      "Bash(timeout 8 python -m uvicorn app.main:app --port 8001)",
+      "Bash(python -c \"import certifi; print\\(certifi.where\\(\\)\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('main.py OK, routes:', [r.path for r in app.routes if hasattr\\(r, 'path'\\)][:10]\\)\")",
+      "Bash(timeout 8 python -m uvicorn app.main:app --port 8002)",
+      "Bash(timeout 8 python -m uvicorn app.main:app --port 8003)"
     ]
   }
 }

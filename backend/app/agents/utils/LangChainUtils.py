@@ -84,9 +84,11 @@ class LangChainUtils:
         _ensure_langchain()
         return ChatPromptTemplate.from_messages([
             SystemMessage(content=(
-                "You are an expert assistant designed to help with educational content creation. "
-                "Always respond with valid JSON matching the requested schema exactly. "
-                "Do not include explanations outside the JSON structure."
+                "你是一个专业的教育内容生成专家。"
+                "核心规则：你必须且只能围绕用户在消息中指定的「生成主题」来生成内容。"
+                "绝对禁止将主题替换为其他话题，即使你认为其他话题更合适。"
+                "如果用户主题是「机器学习」，你只能输出关于机器学习的内容，不能换成深度学习、编程或其他。"
+                "严格按照指定的JSON格式输出，不要包含任何JSON之外的解释文字、markdown标记或代码块标记。"
             )),
             HumanMessage(content=template)
         ])
@@ -101,8 +103,11 @@ class LangChainUtils:
         _ensure_langchain()
         model = cls._get_model()
         runnable = prompt_template | model
+        logger.info("[LangChain] Calling DeepSeek API...")
         result = runnable.invoke(inputs)
-        return str(result.content) if hasattr(result, 'content') else str(result)
+        content = str(result.content) if hasattr(result, 'content') else str(result)
+        logger.info("[LangChain] DeepSeek response (first 500 chars): %s", content[:500])
+        return content
 
     @classmethod
     async def execute_chain_async(cls, prompt_template, inputs: Dict[str, Any]) -> str:

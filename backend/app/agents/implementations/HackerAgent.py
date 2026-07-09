@@ -17,33 +17,37 @@ class HackerAgent(BaseAgent):
     """极客智能体 — 生成代码示例与编程练习（v1 兼容格式）"""
 
     PROMPT_TEMPLATE = """
-你是一个经验丰富的程序员和教育专家，专门负责生成编程相关的教学内容。
+你是一个经验丰富的程序员和教育专家。你的唯一任务是：为「{topic}」编写Python代码示例。
 
-⚠️ 核心约束：你必须且只能围绕下面这个主题编写代码！
+🔴🔴🔴 致命规则：你的代码必须100%围绕「{topic}」。不允许写任何与「{topic}」无关的代码。 🔴🔴🔴
 
-生成主题：{topic}
+举例说明（严格遵守）：
+- 如果主题是「Transformer注意力机制」→ 代码必须实现注意力计算、QKV、softmax等
+- 如果主题是「二分查找」→ 代码必须实现二分查找算法
+- 如果主题是「线性回归」→ 代码必须实现梯度下降拟合线性模型
+- 如果主题是「排序算法」→ 代码必须实现排序算法（冒泡、快排等）
+- 不论主题是什么，都必须围绕它写代码。禁止写print('hello world')这种无关代码。
 
-上游已生成的教学内容：{context}
+以下是对「{topic}」的教学内容摘要，供你参考（只关注与{topic}直接相关的内容）：
+{context}
 
-请严格以JSON格式返回（不要包含任何其他文字）：
-```json
+请严格以JSON格式返回（不要包含任何其他文字，不要markdown代码块标记）：
 {{
-  "title": "代码示例标题（必须包含上述主题关键词）",
-  "description": "代码功能描述（50-100字）",
-  "code": "完整的可运行Python代码（含详细注释，至少30行）",
+  "title": "【必须包含{topic}完整关键词】的代码实验标题",
+  "description": "说明这段代码如何演示{topic}的核心概念（50-100字）",
+  "code": "完整的可运行Python代码（含import、中文注释、主逻辑，至少20行，必须与{topic}直接相关）",
   "expected_output": "运行这段代码后的预期输出结果",
   "exercises": [
-    "练习1描述（与上述主题直接相关）",
-    "练习2描述（与上述主题直接相关）",
-    "练习3描述（与上述主题直接相关）"
+    "练习1：修改代码中的参数，观察{topic}的行为变化",
+    "练习2：用另一种方法实现{topic}的核心功能",
+    "练习3：给{topic}的代码添加新功能"
   ]
 }}
-```
 
-要求：
-- 代码主题必须与上述生成主题一致，不可换成其他领域
-- 代码完整可运行，包含 import 和详细注释
-- exercises 是字符串数组（每个练习是一句话描述），至少2个
+再次强调：
+- title、description、code、exercises 每一项都必须直接提及或演示「{topic}」
+- 禁止写通用示例代码（如 print('hello')、简单的加减乘除等与{topic}无关的代码）
+- 代码注释必须用中文，详细解释每步与{topic}的关系
 """
 
     def __init__(self, config: AgentConfig = None):
@@ -67,38 +71,40 @@ class HackerAgent(BaseAgent):
             })
 
             parsed = LangChainUtils.try_parse_json(llm_response)
-            if parsed:
-                # v1 兼容：确保 exercises 是字符串数组
+            # 验证：code 存在且足够长，且 title 包含 topic 关键词
+            code_ok = isinstance(parsed.get("code"), str) and len(parsed["code"]) > 50
+            title_ok = isinstance(parsed.get("title"), str) and any(
+                kw in parsed["title"] for kw in context.topic.split() if len(kw) >= 2
+            ) if parsed else False
+
+            if parsed and code_ok and title_ok:
+                # 规范化 exercises
                 exercises = parsed.get("exercises", [])
                 normalized_exercises = []
                 for ex in exercises:
                     if isinstance(ex, str):
                         normalized_exercises.append(ex)
                     elif isinstance(ex, dict):
-                        # 对象格式 → 拼接为字符串
                         parts = []
-                        if ex.get("title"):
-                            parts.append(ex["title"])
-                        if ex.get("description"):
-                            parts.append(ex["description"])
-                        if ex.get("requirement"):
-                            parts.append(f"要求: {ex['requirement']}")
+                        if ex.get("title"): parts.append(ex["title"])
+                        if ex.get("description"): parts.append(ex["description"])
+                        if ex.get("requirement"): parts.append(f"要求: {ex['requirement']}")
                         normalized_exercises.append(" — ".join(parts) if parts else str(ex))
                     else:
                         normalized_exercises.append(str(ex))
 
                 content = {
-                    "title": parsed.get("title", f"{context.topic} 编程示例"),
+                    "title": parsed["title"],
                     "description": parsed.get("description", ""),
-                    "code": parsed.get("code", ""),
+                    "code": parsed["code"],
                     "expected_output": parsed.get("expected_output", ""),
                     "exercises": normalized_exercises if normalized_exercises else [
                         f"修改代码中的参数，观察{context.topic}的行为变化",
-                        f"尝试用另一种算法实现{context.topic}的相同功能",
+                        f"尝试用另一种方法实现{context.topic}的相同功能",
                     ],
                 }
             else:
-                logger.warning("HackerAgent: LLM returned non-JSON, using fallback")
+                logger.warning("HackerAgent: output validation failed (missing code or wrong topic), using fallback")
                 content = get_fallback_content("hacker", context.topic)
 
             self._record_success(context.topic)
