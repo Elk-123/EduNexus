@@ -34,7 +34,10 @@ class ProfessorAgent(BaseAgent):
     {{
       "heading": "与「{topic}」直接相关的章节标题",
       "subsections": [
-        {{"subheading": "小节标题", "body": "小节详细内容（至少150字，必须与「{topic}」直接相关）"}}
+        {{
+        "subheading": "小节标题", 
+        "body": "小节详细内容（至少150字，必须与「{topic}」直接相关）"
+        }}
       ]
     }}
   ]

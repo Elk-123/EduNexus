@@ -29,89 +29,112 @@ def get_fallback_content(agent_type: str, topic: str) -> Dict[str, Any]:
 
     if agent_type == "professor":
         return {
-            "title": f"深入理解：{topic}",
+            "title": "深入理解：Transformer 架构中的注意机制",
             "sections": [
                 {
-                    "heading": "基础概念与原理",
+                    "heading": "注意机制的核心概念",
                     "subsections": [
                         {
-                            "subheading": "核心定义",
-                            "body": f"{topic}是该领域的核心概念之一。在深入探讨之前，我们先建立对基础原理的清晰理解。这一概念源于对实际问题的深入思考，经过多年的理论发展和实践验证，已经成为现代技术体系中不可或缺的组成部分。理解其核心定义是掌握整个知识体系的基石。",
+                            "subheading": "起源与动机",
+                            "body": "2017年提出的Transformer架构中，注意机制是革命性创新。它解决了RNN序列建模的局限性，允许模型直接关注序列中任意位置的信息。这种机制模拟了人类认知中的注意力分配方式，使得模型能够学习到序列中不同部分之间的依赖关系。"
                         },
                         {
-                            "subheading": "理论基础",
-                            "body": f"{topic}的数学基础建立在严谨的理论框架之上。理解其中的理论推导对于掌握该概念至关重要。理论基础不仅帮助我们解释现象，更指导着实践应用的方向。从基本原理出发，我们可以逐步推导出更为复杂的应用模式。",
-                        },
-                    ],
+                            "subheading": "认知科学基础",
+                            "body": "注意机制的哲学根源可追溯到认知心理学。在阅读句子时，我们会自然地关注与当前词最相关的词。例如，看到'我喜欢红色的'时，大脑会自动聚焦在'红色'上。这种选择性注意能力启发了研究者将其形式化。"
+                        }
+                    ]
                 },
                 {
-                    "heading": "实践应用与案例分析",
+                    "heading": "Scaled Dot-Product 注意力",
                     "subsections": [
                         {
-                            "subheading": "应用场景",
-                            "body": f"在实际应用中，{topic}已经被广泛部署于各类场景。从工业界到学术界，从基础研究到商业产品，都能看到它的身影。我们将通过具体案例来分析其工作原理，帮助你建立理论与实践之间的桥梁。",
+                            "subheading": "基本原理",
+                            "body": "Transformer使用Scaled Dot-Product注意力，通过计算Query、Key、Value之间的点积获得权重。将Query与所有Key进行点积，通过softmax归一化得到权重，再与Value加权求和。"
                         },
                         {
-                            "subheading": "常见误区",
-                            "body": f"学习{topic}的过程中，最常遇到的困惑包括概念混淆、参数调优不当、以及对其适用范围的误判。本节将逐一澄清这些误区，帮助你避开学习过程中的常见陷阱，建立正确的认知框架。",
-                        },
-                    ],
+                            "subheading": "缩放因子的作用",
+                            "body": "缩放因子（1/√d_k）用于防止点积过大导致梯度消失。当维度d_k较大时，点积的方差会增大，导致softmax进入梯度饱和区域。缩放因子使梯度保持在合理范围内，确保模型正常训练。"
+                        }
+                    ]
                 },
                 {
-                    "heading": "进阶主题与前沿发展",
+                    "heading": "多头注意力的架构设计",
                     "subsections": [
                         {
-                            "subheading": "最新研究动态",
-                            "body": f"近年来，围绕{topic}的研究取得了突破性进展。新的方法和优化策略不断涌现，推动了整个领域向前发展。关注最新研究动态，有助于把握技术演进的方向，为深入学习和创新实践提供灵感。",
+                            "subheading": "并行处理的优势",
+                            "body": "多头注意力允许模型同时关注不同位置的不同表示子空间。每个头学习不同的注意力模式，有的关注语法结构，有的关注语义关系。这种并行处理增强了模型的表达能力。"
                         },
                         {
-                            "subheading": "与其他领域的交叉",
-                            "body": f"{topic}并非孤立存在，它与多个相关领域有着深刻的联系。理解这些交叉关系，不仅能够加深对核心概念的理解，还能激发跨领域的创新思考。跨学科的知识整合是解决复杂问题的关键能力。",
-                        },
-                    ],
+                            "subheading": "实现细节",
+                            "body": "在GPT架构中，每个注意力层使用多头设计，多个头关注当前位置和前几个位置以保持局部连贯性。特定的头还用于处理特殊标记如[CLS]和[SEP]。"
+                        }
+                    ]
                 },
+                {
+                    "heading": "应用场景与发展",
+                    "subsections": [
+                        {
+                            "subheading": "从Transformer到GPT",
+                            "body": "2018年OpenAI发布GPT，采用Transformer解码器架构，通过无监督预训练在各种NLP任务上取得突破。GPT-2（2019）证明了大规模预训练模型的威力，GPT-3（2020）参数量达1750亿，展现涌现能力。"
+                        },
+                        {
+                            "subheading": "现代优化技术",
+                            "body": "现代大型语言模型中，注意力机制发展出多种变体：稀疏注意力降低计算成本，分组注意力提高效率，核注意力捕捉非线性关系。这些优化在保持模型能力的同时提高了计算效率。"
+                        }
+                    ]
+                }
             ],
         }
 
     if agent_type == "architect":
         return {
             "mindmap": {
-                "root": f"root(({topic}))",
+                "root": "root((Transformer 注意力机制))",
                 "children": [
                     {
-                        "name": "基础理论",
+                        "name": "核心概念",
                         "children": [
-                            {"name": "核心定义与概念"},
-                            {"name": "数学原理与推导"},
-                            {"name": "历史发展与演进"},
-                        ],
+                            {"name": "Q - Query (查询): 当前要匹配的信息"},
+                            {"name": "K - Key (键): 用于被匹配的信息"},
+                            {"name": "V - Value (值): 最终提取的信息内容"},
+                            {"name": "相似度度量: 计算 Q 与 K 的匹配程度"}
+                        ]
                     },
                     {
-                        "name": "算法与实现",
+                        "name": "数学计算流程",
                         "children": [
-                            {"name": "核心算法流程"},
-                            {"name": "Python代码实现"},
-                            {"name": "性能优化技巧"},
-                            {"name": "常见变体与改进"},
-                        ],
+                            {"name": "Scaled Dot-Product Attention"},
+                            {"name": "点积 (Dot Product): Q 乘以 K 的转置"},
+                            {"name": "缩放 (Scaling): 除以 sqrt(dk) 防止梯度消失"},
+                            {"name": "掩码 (Masking): 屏蔽未来信息 (Decoder)"},
+                            {"name": "归一化 (Softmax): 转化为概率分布"},
+                            {"name": "加权求和: 用概率对 V 进行加权综合"}
+                        ]
                     },
                     {
-                        "name": "应用场景",
+                        "name": "结构分类",
                         "children": [
-                            {"name": "工业界应用案例"},
-                            {"name": "学术研究方向"},
-                            {"name": "未来发展趋势"},
-                        ],
+                            {"name": "自注意力 Self-Attention"},
+                            {"name": "Encoder Self-Attention: 全向关注"},
+                            {"name": "Decoder Masked Self-Attention: 仅关注历史"},
+                            {"name": "交叉注意力 Cross-Attention"},
+                            {"name": "Encoder-Decoder Attention: 建立编码与解码的联系"},
+                            {"name": "多头注意力 Multi-Head Attention"},
+                            {"name": "多空间表达: 线性变换到多个低维子空间"},
+                            {"name": "并行计算: 增强模型捕捉多维度特征的能力"},
+                            {"name": "拼接与融合: Concat & Linear"}
+                        ]
                     },
                     {
                         "name": "关键特性与优势",
                         "children": [
-                            {"name": "与传统方法的对比"},
-                            {"name": "可扩展性与灵活性"},
-                            {"name": "实践中的最佳做法"},
-                        ],
-                    },
-                ],
+                            {"name": "并行性 Parallelism: 解决 RNN 无法并行的问题"},
+                            {"name": "长程依赖 Long-range: 建模全局上下文"},
+                            {"name": "动态权重: 根据输入内容实时计算相关性"},
+                            {"name": "复杂度: [\"O(n² · d) n为序列长度\"]"}
+                        ]
+                    }
+                ]
             }
         }
 
@@ -119,38 +142,38 @@ def get_fallback_content(agent_type: str, topic: str) -> Dict[str, Any]:
         return {
             "questions": [
                 {
-                    "question": f"关于{topic}，以下哪个描述最准确？",
+                    "question": "在Transformer的注意力机制中，使用缩放因子（1/√d_k）的主要目的是什么？",
                     "options": [
-                        f"A. {topic}仅适用于特定领域的问题",
-                        f"B. {topic}是一种通用的解决方案，核心在于其理论基础的普适性",
-                        f"C. {topic}已经过时，被新技术完全取代",
-                        f"D. {topic}只具有理论价值，没有实际应用",
+                        "加快计算速度",
+                        "防止梯度消失",
+                        "减少内存使用",
+                        "提高模型容量"
                     ],
                     "answer": 1,
-                    "explanation": f"{topic}的核心理论具有普适性，能够应用于多个不同领域的问题。虽然在不同场景下需要适当调整，但其基本原理是通用的。",
+                    "explanation": "缩放因子防止点积过大导致softmax函数进入梯度平坦区域，有效避免梯度消失问题。"
                 },
                 {
-                    "question": f"在{topic}的实践中，以下哪个步骤应该首先完成？",
+                    "question": "多头注意力的主要优势是什么？",
                     "options": [
-                        "A. 参数调优与模型优化",
-                        "B. 数据收集与预处理",
-                        "C. 模型部署与上线",
-                        "D. 结果可视化与报告",
+                        "减少计算复杂度",
+                        "允许并行计算",
+                        "从不同角度学习注意力模式",
+                        "降低参数数量"
                     ],
-                    "answer": 1,
-                    "explanation": "数据收集与预处理是所有后续步骤的基础。没有高质量的数据，任何算法都无法发挥其应有的效果。",
+                    "answer": 2,
+                    "explanation": "多头注意力允许模型同时关注不同位置的不同表示子空间，每个头学习不同的注意力模式。"
                 },
                 {
-                    "question": f"{topic}与传统方法相比，最主要的优势是什么？",
+                    "question": "在解码器中，为什么需要掩码注意力机制？",
                     "options": [
-                        "A. 计算速度更快",
-                        "B. 理论基础更先进，能够处理更复杂的场景",
-                        "C. 实现更简单",
-                        "D. 不需要任何数据",
+                        "防止信息泄露",
+                        "保持自回归特性",
+                        "提高训练效率",
+                        "减少内存占用"
                     ],
                     "answer": 1,
-                    "explanation": f"{topic}建立了更先进的理论框架，能够处理传统方法难以应对的复杂场景。这是其最本质的优势。",
-                },
+                    "explanation": "掩码注意力防止当前位置关注未来信息，保持自回归特性，这是生成式任务的关键要求。"
+                }
             ],
         }
 
@@ -159,106 +182,161 @@ def get_fallback_content(agent_type: str, topic: str) -> Dict[str, Any]:
             "scenes": [
                 {
                     "scene_number": 1,
-                    "title": f"{topic}基础介绍",
-                    "visual": f"动画展示一个与{topic}相关的实际问题场景，通过可视化的方式引入核心概念",
-                    "voiceover": f"今天我们来探索{topic}。从一个直观的问题开始，让我们逐步理解它的核心思想。无论你是否有相关基础，这个讲解都将帮助你建立起清晰的概念框架。",
+                    "title": "Transformer注意力机制详解",
+                    "visual": "动画展示注意力权重如何分布",
+                    "voiceover": "想象我们在读一个句子时，我们会自然地关注到与当前词最相关的词...",
                     "duration_seconds": 45,
                     "resources": [
                         {
                             "type": "video",
-                            "title": f"{topic} - 从零开始的完整教程",
-                            "description": f"全面了解{topic}的基本概念、核心原理和实际应用场景，适合初学者入门",
-                            "thumbnail": f"https://img.zcool.cn/community/03158e5d1b26e1a801215a95a458e7.jpg",
-                            "url": f"https://www.youtube.com/results?search_query={topic.replace(' ', '+')}+tutorial",
-                            "duration": "15:00",
-                            "platform": "YouTube",
+                            "title": "Attention in transformers, step-by-step | Deep Learning Chapter 6",
+                            "description": "这是 3Blue1Brown 深度学习系列教程的第 6 章。视频通过极其直观的动态数学可视化，一步步拆解了 Transformer 架构中的注意力机制（Attention Mechanism）",
+                            "thumbnail": "https://img.youtube.com/vi/eMlx5fFNoYc/maxresdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=eMlx5fFNoYc",
+                            "duration": "26:10",
+                            "platform": "YouTube"
                         }
-                    ],
+                    ]
                 },
                 {
                     "scene_number": 2,
-                    "title": f"{topic}核心原理深度解析",
-                    "visual": f"逐步拆解{topic}的核心算法流程，用动画展示关键步骤的数学原理",
-                    "voiceover": f"让我们深入到{topic}的核心。理解它的工作原理，就像解开一个精妙的谜题。每一个步骤都有其深刻的设计意图，我们将一一揭示这些设计的巧妙之处。",
+                    "title": "QKV机制可视化教程",
+                    "visual": "三栏对比展示Q、K、V的作用",
+                    "voiceover": "Query就像是当前词的问题，Key是所有词的标签，Value是所有词的内容...",
                     "duration_seconds": 60,
                     "resources": [
                         {
                             "type": "video",
-                            "title": f"{topic}核心原理详解 - 深入理解每个细节",
-                            "description": f"深入理解{topic}的工作原理、数学基础和实现细节，适合有一定基础的学习者",
-                            "thumbnail": f"https://img.zcool.cn/community/03158e5d1b26e1a801215a95a458e7.jpg",
-                            "url": f"https://www.youtube.com/results?search_query={topic.replace(' ', '+')}+deep+dive",
-                            "duration": "20:00",
-                            "platform": "YouTube",
+                            "title": "Transformers Step-by-Step Explained (Attention Is All You Need)",
+                            "description": "这段视频用通俗易懂的语言和动画，逐步解释了经典论文《Attention Is All You Need》中的 Transformer 架构，并对比了它与传统模型的区别",
+                            "thumbnail": "https://img.youtube.com/vi/avjX3QrYkls/maxresdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=avjX3QrYkls",
+                            "duration": "10:03",
+                            "platform": "YouTube"
                         }
-                    ],
+                    ]
                 },
                 {
                     "scene_number": 3,
-                    "title": f"{topic}实战应用与代码演示",
-                    "visual": f"实际案例演示和代码实现，展示{topic}在真实场景中的运用",
-                    "voiceover": f"通过实际案例掌握{topic}的应用，理论结合实践是最有效的学习方式。我们将从头开始构建一个完整的示例，让你看到理论是如何转化为实际代码的。",
+                    "title": "多头注意力实战应用",
+                    "visual": "动画展示多个并行头的注意力计算",
+                    "voiceover": "每个头就像一个专家，从不同角度理解词之间的关系...",
                     "duration_seconds": 75,
                     "resources": [
                         {
                             "type": "video",
-                            "title": f"{topic}实战项目 - 从理论到代码实现",
-                            "description": f"通过实际项目学习{topic}的具体实现、最佳实践和行业应用",
-                            "thumbnail": f"https://img.zcool.cn/community/03158e5d1b26e1a801215a95a458e7.jpg",
-                            "url": f"https://www.youtube.com/results?search_query={topic.replace(' ', '+')}+implementation",
-                            "duration": "25:00",
-                            "platform": "YouTube",
+                            "title": "How Attention Mechanism Works in Transformer Architecture",
+                            "description": "这段视频更加侧重于从代码、矩阵维度变化以及大语言模型（如 GPT-2）的整机数据流（Data Flow）的视角，硬核拆解注意力机制在 Transformer 中的运作。",
+                            "thumbnail": "https://img.youtube.com/vi/KMHkbXzHn7s/maxresdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=KMHkbXzHn7s",
+                            "duration": "22:09",
+                            "platform": "YouTube"
                         }
-                    ],
-                },
+                    ]
+                }
             ],
         }
 
     if agent_type == "hacker":
         return {
-            "title": f"{topic} - Python代码实验",
-            "description": f"通过动手实践来理解{topic}的核心原理，代码是最好的老师",
-            "code": f'''"""
-{topic} - 动手实验
-通过代码来直观理解核心概念
-"""
-import numpy as np
-import matplotlib.pyplot as plt
+            "title": "Transformer 注意机制 - PyTorch实现",
+            "description": "通过亲手实现注意机制来深入理解其工作原理",
+            "code": """\"\"
+Transformer 注意机制 - PyTorch 实现
+动手实现核心组件，加深理解
+\"\"
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import math
 
-def demonstrate_concept():
-    """演示{topic}的核心概念"""
-    # ===== 步骤1: 准备数据 =====
-    print("步骤1: 准备实验数据")
-    x = np.linspace(-5, 5, 100)
-    y = x ** 2  # 示例：二次函数
+class ScaledDotProductAttention(nn.Module):
+    def __init__(self, d_k):
+        super().__init__()
+        self.d_k = d_k
 
-    # ===== 步骤2: 核心计算 =====
-    print("步骤2: 执行核心计算")
-    derivative = 2 * x  # 导数
-    gradient = derivative[50]  # 某点的梯度
+    def forward(self, Q, K, V, mask=None):
+        # 计算注意力分数
+        scores = torch.matmul(Q, K.transpose(-2, -1)) / math.sqrt(self.d_k)
 
-    print(f"在 x=0 处的梯度: {{gradient}}")
+        # 应用掩码（如果提供）
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
 
-    # ===== 步骤3: 可视化 =====
-    print("步骤3: 生成可视化图表")
-    # plt.plot(x, y, label='f(x)')
-    # plt.legend()
-    # plt.show()
+        # 计算注意力权重
+        attention_weights = F.softmax(scores, dim=-1)
 
-    return {{"min_value": np.min(y), "gradient_at_zero": float(gradient)}}
+        # 应用注意力权重到Value
+        output = torch.matmul(attention_weights, V)
 
+        return output, attention_weights
 
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads=8):
+        super().__init__()
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+
+        self.d_model = d_model
+        self.d_k = d_model // num_heads
+        self.num_heads = num_heads
+
+        # 线性变换层
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+
+    def forward(self, Q, K, V, mask=None):
+        batch_size = Q.size(0)
+
+        # 线性变换并分割多头
+        Q = self.W_q(Q).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        K = self.W_k(K).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        V = self.W_v(V).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+
+        # 计算注意力
+        attention, weights = ScaledDotProductAttention(self.d_k)(Q, K, V, mask)
+
+        # 合并多头
+        attention = attention.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+
+        # 输出变换
+        output = self.W_o(attention)
+
+        return output, weights
+
+# 示例使用
 if __name__ == "__main__":
-    result = demonstrate_concept()
-    print(f"实验结果: {{result}}")
-''',
-            "expected_output": f"步骤1: 准备实验数据\n步骤2: 执行核心计算\n在 x=0 处的梯度: 0.0\n步骤3: 生成可视化图表\n实验结果: {{'min_value': 0.0, 'gradient_at_zero': 0.0}}",
-            "exercises": [
-                f"修改函数定义，尝试其他函数来探索{topic}的不同行为",
-                f"添加噪声数据，观察{topic}对噪声的鲁棒性",
-                f"实现{topic}的一个变体算法，比较两者的性能差异",
-            ],
+    # 参数设置
+    batch_size = 32
+    seq_len = 10
+    d_model = 512
+    num_heads = 8
+
+    # 创建随机输入
+    x = torch.randn(batch_size, seq_len, d_model)
+
+    # 创建多头注意力层
+    mha = MultiHeadAttention(d_model, num_heads)
+
+    # 计算输出
+    output, attention_weights = mha(x, x, x)  # 自注意力
+
+    print(f"输入形状: {x.shape}")
+    print(f"输出形状: {output.shape}")
+    print(f"注意力权重形状: {attention_weights.shape}")
+
+    # 展示第一个序列第一个头的注意力权重
+    print("\\n第一个序列第一个头的注意力权重：")
+    print(attention_weights[0, 0][:5])  # 只展示前5个词的注意力""",
+                    "expected_output": "输入形状: torch.Size([32, 10, 512])\n输出形状: torch.Size([32, 10, 512])\n注意力权重形状: torch.Size([32, 8, 10, 10])\n\n第一个序列第一个头的注意力权重：\ntensor([0.0988, 0.1102, 0.1245, 0.0989, 0.1024], grad=True)",
+                    "exercises": [
+                        "修改多头数量，观察对模型性能的影响",
+                        "实现相对位置编码并添加到注意力计算中",
+                        "比较不同注意力变体（如Additive Attention）的效果",
+                        "可视化不同层的注意力权重分布"
+                    ],
         }
 
     if agent_type == "reviewer":

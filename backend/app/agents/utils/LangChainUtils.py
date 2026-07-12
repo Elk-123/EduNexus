@@ -9,6 +9,9 @@ import re
 import threading
 import logging
 from typing import Dict, Any, Optional
+from dotenv import load_dotenv
+
+load_dotenv()  # 读取 .env 文件内容并写入系统环境变量
 
 logger = logging.getLogger("edunexus.agents")
 
@@ -18,25 +21,19 @@ _model_lock = threading.Lock()
 # 延迟导入
 ChatOpenAI = None
 ChatPromptTemplate = None
-HumanMessage = None
-SystemMessage = None
 
 
 def _ensure_langchain():
     """延迟加载 LangChain 依赖"""
-    global ChatOpenAI, ChatPromptTemplate, HumanMessage, SystemMessage
+    global ChatOpenAI, ChatPromptTemplate
     if ChatOpenAI is not None:
         return
     try:
         from langchain_openai import ChatOpenAI as _ChatOpenAI
         from langchain_core.prompts import ChatPromptTemplate as _ChatPromptTemplate
-        from langchain_core.messages import HumanMessage as _HumanMessage
-        from langchain_core.messages import SystemMessage as _SystemMessage
 
         ChatOpenAI = _ChatOpenAI
         ChatPromptTemplate = _ChatPromptTemplate
-        HumanMessage = _HumanMessage
-        SystemMessage = _SystemMessage
     except ImportError as e:
         raise ImportError(
             "langchain-openai and langchain-core are required. "
@@ -83,14 +80,13 @@ class LangChainUtils:
         """创建提示模板"""
         _ensure_langchain()
         return ChatPromptTemplate.from_messages([
-            SystemMessage(content=(
+            ("system",
                 "你是一个专业的教育内容生成专家。"
-                "核心规则：你必须且只能围绕用户在消息中指定的「生成主题」来生成内容。"
-                "绝对禁止将主题替换为其他话题，即使你认为其他话题更合适。"
-                "如果用户主题是「机器学习」，你只能输出关于机器学习的内容，不能换成深度学习、编程或其他。"
+                "核心规则：你必须且只能围绕用户在消息中指定的主题来生成内容。"
+                "绝对禁止将用户指定的主题替换为其他话题，即使你认为其他话题更合适。"
                 "严格按照指定的JSON格式输出，不要包含任何JSON之外的解释文字、markdown标记或代码块标记。"
-            )),
-            HumanMessage(content=template)
+            ),
+            ("human", template),
         ])
 
     @classmethod
