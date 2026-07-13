@@ -137,37 +137,78 @@ class ContentGenerator:
 
     async def chat_with_agent(self, agent_id: str, message: str, context: str = "") -> Dict[str, str]:
         """
-        与特定智能体对话，使用DeepSeek API
+        与特定智能体深度对话，基于 pipeline 已生成的内容上下文。
+
+        Args:
+            agent_id: 智能体标识 (professor/architect/examiner/director/hacker/reviewer)
+            message: 用户当前问题
+            context: pipeline 中该 agent 已生成的内容或相关上下文
         """
         try:
-            # 定义不同智能体的系统提示
+            # 定义不同智能体的系统提示（强调"基于已生成内容回答"）
             system_prompts = {
-                "professor": "你是一位资深的教育学教授，专门深入浅出地解释复杂概念。请用专业但易懂的语言回答问题。",
-                "architect": "你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。请提供结构化的思考和建议。",
-                "examiner": "你是一位专业考试设计专家，擅长设计高质量的测验题和评估学习效果。请提供精准的反馈。",
-                "director": "你是一位教育视频导演，设计生动的可视化教学内容。请提供创意性的建议和指导。",
-                "hacker": "你是一位实战派技术专家，提供可运行的代码示例和实践指导。请提供具体的技术解决方案。",
-                "reviewer": "你是一位教育内容评审专家，对生成的内容进行质量评估。请提供专业的改进建议。"
+                "professor": (
+                    "你是一位资深的教育学教授，专门深入浅出地解释复杂概念。\n"
+                    "你之前已经为某个主题生成了教学文档。现在用户针对这些内容提出了后续问题。\n"
+                    "请严格基于你之前生成的内容来回答，如果需要补充，请明确标注哪些是新增内容。"
+                ),
+                "architect": (
+                    "你是一位知识架构师，专门将复杂概念组织成清晰的知识结构。\n"
+                    "你之前已经为某个主题构建了思维导图/知识图谱。现在用户针对这些内容提出了后续问题。\n"
+                    "请基于已构建的知识结构来回答，帮助用户理解各节点之间的关系。"
+                ),
+                "examiner": (
+                    "你是一位专业考试设计专家，擅长设计高质量的测验题和评估学习效果。\n"
+                    "你之前已经为某个主题设计了测验题目。现在用户针对这些题目或相关知识点提出了后续问题。\n"
+                    "请基于你已设计的题目和解析来回答，可以提供更详细的解释或生成新的变体题目。"
+                ),
+                "director": (
+                    "你是一位教育视频导演，设计生动的可视化教学内容。\n"
+                    "你之前已经为某个主题规划了视频分镜脚本。现在用户针对这些内容提出了后续问题。\n"
+                    "请基于你已规划的场景来回答，可以提供更多视频资源推荐或调整脚本。"
+                ),
+                "hacker": (
+                    "你是一位实战派技术专家，提供可运行的代码示例和实践指导。\n"
+                    "你之前已经为某个主题编写了代码示例。现在用户针对这些代码提出了后续问题。\n"
+                    "请基于你已编写的代码来回答，可以解释代码细节、优化性能或提供替代实现。"
+                ),
+                "reviewer": (
+                    "你是一位教育内容评审专家，对生成的内容进行质量评估。\n"
+                    "你之前已经对某个主题的生成内容进行了质量审查。现在用户针对审查结果提出了后续问题。\n"
+                    "请基于你的审查报告来回答，可以提供更具体的改进方案或重新评估某些维度。"
+                ),
             }
 
-            system_prompt = system_prompts.get(agent_id, "你是一位专业的教育智能体助手。")
+            system_prompt = system_prompts.get(
+                agent_id,
+                "你是一位专业的教育智能体助手。请基于你之前生成的内容来回答用户的后续问题。"
+            )
 
+            # 构建消息列表：系统提示 + 上下文 + 用户问题
+            messages = [{"role": "system", "content": system_prompt}]
 
-            # 构建完整的上下文
-            full_context = f"当前讨论主题：{context}\n" if context else ""
+            if context:
+                # 将已生成的内容作为上下文注入
+                messages.append({
+                    "role": "user",
+                    "content": f"以下是你之前生成的内容，请仔细阅读：\n\n{context}"
+                })
+                messages.append({
+                    "role": "assistant",
+                    "content": "我已理解我之前生成的内容。请提出你的后续问题，我会基于这些内容来回答。"
+                })
+
+            # 用户当前问题
+            messages.append({"role": "user", "content": message})
 
             payload = {
                 "model": settings.DEEPSEEK_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"{full_context}用户问题：{message}"}
-                ],
+                "messages": messages,
                 "temperature": 0.7,
-                "max_tokens": 2000  # 增加到2000 tokens
+                "max_tokens": 2000,
             }
 
-
-            # 调用DeepSeek API
+            # 调用 DeepSeek API
             response = requests.post(
                 self.deepseek_api_url,
                 headers=self.deepseek_headers,
@@ -176,10 +217,8 @@ class ContentGenerator:
             )
             response.raise_for_status()
 
-
             response_data = response.json()
             reply = response_data["choices"][0]["message"]["content"]
-
 
             return {
                 "reply": reply,
@@ -188,7 +227,7 @@ class ContentGenerator:
 
         except Exception as e:
             print(f"DeepSeek API 调用失败: {str(e)}")
-            # 回退到mock数据
+            # 回退到 mock 数据
             return {
                 "reply": f"关于「{message}」，作为{agent_id}智能体，我目前无法连接到AI服务。请稍后再试，或者尝试其他问题。",
                 "agent_type": agent_id

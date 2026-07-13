@@ -33,6 +33,8 @@ class ResourceResponse(BaseModel):
 
 class AgentChatRequest(BaseModel):
     message: str
+    task_id: Optional[str] = None   # 关联的 pipeline 任务ID（v1 UUID 或 v2 task_xxx）
+    context: Optional[str] = None   # 前端传递的上下文（pipeline 已生成的内容摘要）
 
 
 class AgentChatResponse(BaseModel):

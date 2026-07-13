@@ -10,11 +10,12 @@ export interface LearningResource {
   }
   
   export interface KnowledgeNode {
+    phase: number; // 阶段编号，从 1 开始
     id: string;
     label: string;
     x: number;
     y: number;
-    type: 'standard' | 'injected'; // injected 表示 AI 动态插入的补全节点
+    type: 'standard' | 'injected' | 'milestone'; // injected 表示 AI 动态插入的补全节点
     proficiency: number; // 0-1 掌握度
     status: 'completed' | 'active' | 'pending';
     resources: LearningResource[];

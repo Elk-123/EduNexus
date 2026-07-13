@@ -4,7 +4,7 @@ Director Agent - 导演智能体
 """
 import json
 import logging
-import urllib.parse
+import re
 from datetime import datetime
 from ..base.BaseAgent import BaseAgent
 from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentResult, AgentStatus
@@ -35,7 +35,18 @@ class DirectorAgent(BaseAgent):
       "title": "与「{topic}」直接相关的场景标题",
       "visual": "画面描述（与{topic}直接相关，描述具体的动画/图示/演示内容）",
       "voiceover": "旁白内容（100-200字，口语化，必须围绕{topic}展开）",
-      "duration_seconds": 45
+      "duration_seconds": 45,
+      "resources": [
+        {{
+          "type": "video",
+          "title": "真实存在的YouTube视频标题",
+          "description": "该视频与当前场景主题相关的简介（50-100字）",
+          "thumbnail": "https://img.youtube.com/vi/<真实视频ID>/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=<真实视频ID>",
+          "duration": "MM:SS",
+          "platform": "YouTube"
+        }}
+      ]
     }}
   ]
 }}
@@ -44,7 +55,11 @@ class DirectorAgent(BaseAgent):
 - 至少3个场景，从入门到深入，逻辑连贯
 - 所有场景的 title、visual、voiceover 必须直接涉及「{topic}」
 - 旁白要口语化、生动有趣，像3Blue1Brown的风格
-- ⚠️ 不要生成 resources 字段（视频链接会由系统自动生成）
+- ★ 每个场景必须包含 1-2 个 resources，每个 resource 是一个你确知真实存在的 YouTube 视频
+- ★ 必须使用你训练数据中确认存在的真实视频 ID（如 3Blue1Brown、Stanford Online、MIT OpenCourseWare 等知名教育频道的视频）
+- ★ thumbnail 格式必须为 https://img.youtube.com/vi/<真实视频ID>/maxresdefault.jpg
+- ★ url 格式必须为 https://www.youtube.com/watch?v=<真实视频ID>
+- ★ 如果你不确定某个视频是否真实存在，宁可只给 1 个你确认存在的视频，也不要编造假链接
 """
 
 
@@ -80,26 +95,45 @@ class DirectorAgent(BaseAgent):
                     logger.warning("DirectorAgent: scene titles don't contain topic keywords, using fallback")
                     content = get_fallback_content("director", context.topic)
                 else:
-                    # 规范化 + 自动生成 YouTube 搜索链接（不让 LLM 编造）
-                    search_query = urllib.parse.quote(context.topic)
+                    # 规范化字段 + 验证 LLM 生成的 resources
                     for i, s in enumerate(scenes):
                         if "scene_number" not in s:
                             s["scene_number"] = i + 1
                         if "duration_seconds" not in s:
                             s["duration_seconds"] = 45
-                        # ★ 用真实的 YouTube 搜索链接替代 LLM 幻觉的链接
-                        s["resources"] = [
-                            {
-                                "type": "video",
-                                "title": f"{context.topic} — {s.get('title', f'第{i+1}部分')}",
-                                "description": f"在 YouTube 上搜索关于「{context.topic}」的优质教学视频",
-                                "thumbnail": f"https://img.youtube.com/vi/0/maxresdefault.jpg",
-                                "url": f"https://www.youtube.com/results?search_query={search_query}",
-                                "duration": "10:00",
-                                "platform": "YouTube",
-                            }
-                        ]
-                    content = {"scenes": scenes}
+                        # 验证 resources：必须包含真实的 YouTube watch 链接，不能是搜索链接或假链接
+                        resources = s.get("resources", [])
+                        if not isinstance(resources, list) or len(resources) == 0:
+                            logger.warning(
+                                "DirectorAgent: scene %d missing resources, using fallback", s["scene_number"]
+                            )
+                            content = get_fallback_content("director", context.topic)
+                            break
+                        # 校验每个 resource 的 url 是否有效（必须是 watch 链接，拒绝 search/example/fake 链接）
+                        valid_resources = []
+                        for r in resources:
+                            url = r.get("url", "")
+                            if self._is_valid_video_url(url):
+                                # 规范化字段
+                                r.setdefault("type", "video")
+                                r.setdefault("platform", "YouTube")
+                                valid_resources.append(r)
+                            else:
+                                logger.warning(
+                                    "DirectorAgent: scene %d has invalid resource url: %s, skipping",
+                                    s["scene_number"], url
+                                )
+                        if not valid_resources:
+                            logger.warning(
+                                "DirectorAgent: scene %d has no valid resources after filtering, using fallback",
+                                s["scene_number"]
+                            )
+                            content = get_fallback_content("director", context.topic)
+                            break
+                        s["resources"] = valid_resources
+                    else:
+                        # 所有 scenes 都有有效 resources
+                        content = {"scenes": scenes}
             else:
                 logger.warning("DirectorAgent: output validation failed (missing scenes array), using fallback")
                 content = get_fallback_content("director", context.topic)
@@ -133,3 +167,42 @@ class DirectorAgent(BaseAgent):
                 ),
                 duration=duration
             )
+
+    @staticmethod
+    def _is_valid_video_url(url: str) -> bool:
+        """校验视频 URL 是否有效。
+
+        拒绝以下情况：
+        - 搜索链接 (youtube.com/results)
+        - 假域名 (example.com)
+        - 无效的视频 ID（空、0、example 等）
+
+        接受以下格式：
+        - https://www.youtube.com/watch?v=<VIDEO_ID>
+        - https://youtu.be/<VIDEO_ID>
+        """
+        if not url or not isinstance(url, str):
+            return False
+        url_lower = url.lower().strip()
+        # 拒绝搜索链接
+        if "/results" in url_lower or "search_query" in url_lower:
+            return False
+        # 拒绝假域名
+        if "example.com" in url_lower:
+            return False
+        # 匹配 youtube watch 链接
+        watch_match = re.search(r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)', url_lower)
+        if watch_match:
+            video_id = watch_match.group(1)
+            # 拒绝无效 ID
+            if video_id in ("0", "example", "test", "xxx"):
+                return False
+            return True
+        # 匹配 youtu.be 短链接
+        short_match = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', url_lower)
+        if short_match:
+            video_id = short_match.group(1)
+            if video_id in ("0", "example", "test", "xxx"):
+                return False
+            return True
+        return False

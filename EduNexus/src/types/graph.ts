@@ -1,7 +1,8 @@
 export interface KnowledgeNode {
+  phase: number
   id: string
   label: string
-  type: 'standard' | 'injected'
+  type: 'standard' | 'injected' | 'milestone'
   proficiency: number
   status: 'completed' | 'active' | 'pending'
 }

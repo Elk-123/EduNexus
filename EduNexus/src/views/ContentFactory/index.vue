@@ -580,6 +580,7 @@ const handleAgentClick = (agent: any) => {
         v-if="selectedAgent"
         :agent="selectedAgent"
         :topic="currentTopic"
+        :taskId="factoryStore.currentTaskId"
         :resources="factoryStore.resources"
         @close="selectedAgent = null"
       />

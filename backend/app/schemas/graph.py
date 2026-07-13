@@ -6,7 +6,8 @@ from uuid import UUID
 class KnowledgeNodeSchema(BaseModel):
     id: str
     label: str
-    type: str = "standard"   # standard | injected
+    type: str = "standard"   # standard | injected | milestone
+    phase: int = 1            # 阶段编号 1/2/3
     proficiency: float = 0.5  # 0-1
     status: str = "pending"   # completed | active | pending
 

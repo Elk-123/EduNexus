@@ -11,6 +11,7 @@ import ManagerPreview from './ManagerPreview.vue'
 const props = defineProps<{
   agent: any
   topic: string
+  taskId: string | null
   resources: GeneratedResource[]
 }>()
 
@@ -290,6 +291,60 @@ const buildExpertContext = () => {
   }
 
   return contextInfo
+}
+
+// 构建发送给后端的完整对话上下文（包含已生成内容的结构化摘要）
+const buildChatContext = (): string => {
+  const parts: string[] = []
+  const role = props.agent.role.toLowerCase()
+
+  // 1. 主题信息
+  parts.push(`当前主题：${props.topic}`)
+
+  // 2. 专家上下文摘要
+  parts.push(buildExpertContext())
+
+  // 3. 已生成内容的结构化摘要（避免发送完整内容导致 token 爆炸）
+  const res = agentResource.value
+  if (!res?.content) return parts.join('\n')
+
+  const c = res.content
+  switch (role) {
+    case 'professor':
+      if (c.sections) {
+        parts.push(`文档包含 ${c.sections.length} 个章节：${c.sections.map((s: any) => s.heading).join('、')}`)
+      }
+      break
+    case 'architect':
+      if (c.mindmap) {
+        const countNodes = (node: any): number =>
+          1 + (node.children ? node.children.reduce((sum: number, ch: any) => sum + countNodes(ch), 0) : 0)
+        parts.push(`思维导图根节点"${c.mindmap.root}"，共 ${countNodes(c.mindmap)} 个节点`)
+      }
+      break
+    case 'examiner':
+      if (c.questions) {
+        parts.push(`共 ${c.questions.length} 道测验题：${c.questions.map((q: any) => q.question).join('；')}`)
+      }
+      break
+    case 'director':
+      if (c.scenes) {
+        parts.push(`视频分镜共 ${c.scenes.length} 个场景：${c.scenes.map((s: any) => s.title).join('、')}`)
+      }
+      break
+    case 'hacker':
+      if (c.title) {
+        parts.push(`代码实验「${c.title}」：${c.description || ''}`)
+      }
+      break
+    case 'reviewer':
+      if (c.quality_score !== undefined) {
+        parts.push(`质量评分 ${c.quality_score}/100，幻觉风险 ${c.hallucination_risk || 'unknown'}，建议：${(c.suggestions || []).join('；')}`)
+      }
+      break
+  }
+
+  return parts.join('\n')
 }
 
 // ── Demo Mock 数据 ──
@@ -653,7 +708,11 @@ const sendMessage = async () => {
       return
     }
 
-    const response = await chatWithAgent(props.agent.id, { message: userQuery })
+    const response = await chatWithAgent(props.agent.id, {
+      message: userQuery,
+      task_id: props.taskId ?? undefined,
+      context: buildChatContext(),
+    })
     await typeMessage(response.reply)
 
     messages.value.push({

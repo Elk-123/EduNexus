@@ -21,6 +21,8 @@ export interface GeneratedResource {
 
 export interface AgentChatRequest {
   message: string
+  task_id?: string  // 关联的 pipeline 任务ID，用于后端加载该 agent 的已生成内容
+  context?: string  // 前端传递的上下文（v2 pipeline 或自定义上下文文本）
 }
 
 export interface AgentChatResponse {

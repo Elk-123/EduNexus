@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   PlayCircle
 } from 'lucide-vue-next'
-import KnowledgeGraph from './components/KnowledgeGraph.vue'
+import PhaseGraph from './components/PhaseGraph.vue'
 import { Button } from '@/components/ui/button'
 import { useLearningStore } from '@/stores/learningStore'
 import type { KnowledgeNode } from '@/types/graph'
@@ -25,21 +25,7 @@ const isPlanning = computed(() => learningStore.isPlanning)
 const phases = computed(() => learningStore.phases)
 const activePhaseId = ref<string>('')
 
-const activePhaseIdComputed = computed(() => learningStore.activePhaseId)
-const currentGraphNodes = computed(() => learningStore.currentGraphNodes)
-const currentPhaseName = computed(() => {
-  const phase = learningStore.phases.find(p => p.id === learningStore.activePhaseId)
-  return phase?.title || ''
-})
 const analysisSummary = computed(() => learningStore.analysisSummary)
-// 过滤 edges，只保留两端都在当前阶段的边
-const currentGraphEdges = computed(() => {
-  const phase = learningStore.phases.find(p => p.id === learningStore.activePhaseId)
-  if (!phase) return []
-
-  const nodeIds = new Set(phase.nodes.map(n => n.id))
-  return learningStore.edges.filter(e => nodeIds.has(e.from) && nodeIds.has(e.to))
-})
 
 const handlePlan = () => {
   if (!customGoal.value) return
@@ -126,12 +112,10 @@ watch(phases, (newPhases: any[]) => {
           <p class="mt-4 text-sm font-medium text-blue-400 tracking-tighter">PLANNER AGENT IS THINKING...</p>
         </div>
 
-        <!-- 图谱组件 -->
-        <KnowledgeGraph
-          :nodes="currentGraphNodes"
-          :edges="currentGraphEdges"
-          :active-id="activePhaseIdComputed"
-          :phase-name="currentPhaseName"
+        <!-- 三阶段流程图 -->
+        <PhaseGraph
+          :nodes="learningStore.nodes"
+          :edges="learningStore.edges"
         />
       </section>
 

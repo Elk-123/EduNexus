@@ -50,40 +50,68 @@ class PathPlanner:
                 if profile.stress_resistance < 50:
                     weak_areas.append("抗压能力需加强")
 
+        # 将三阶段标准硬性写入 Prompt 约束
         prompt = f"""你是一位资深课程设计师和AI教育专家。
-        请根据学习目标生成一个个性化DAG学习路径。
+        请根据学习目标生成一个【三阶段结构化】的个性化 DAG 学习路径。
 
         学习目标: {goal}
         {profile_context}
 
-        请输出以下JSON:
+        【核心设计规范】
+        1. 必须将整个学习路径严格划分为三个阶段（Phase）：
+           - 阶段 1 (phase=1)：基础储备（偏向概念、工具、语言或理论准备工作）
+           - 阶段 2 (phase=2)：核心掌握（偏向核心原理、主体模型、专业深度技能）
+           - 阶段 3 (phase=3)：前沿进阶/实战（偏向实战项目、部署、优化或前沿应用）
+        2. 阶段内多路并进：每个阶段内部包含 2-3 个标准节点 (type="standard")，可以有分叉连线以体现 DAG。
+        3. 里程碑衔接：每个阶段的末尾必须有且仅有一个里程碑节点 (type="milestone")。
+           - 阶段内的标准节点最终必须全部指向该阶段的里程碑节点。
+           - 上一个阶段的里程碑节点，必须连线指向下一个阶段的起始标准节点，从而实现阶段间的顺序演进。
+        4. 薄弱领域强化：如果学生存在薄弱领域（如基础薄弱、抗压低），请在阶段1或阶段2中插入 1-2 个补充节点 (type="injected")，并规划好前置依赖。
+
+        请输出以下 JSON，不得包含任何 Markdown 格式以外的解释性文字：
         {{
             "title": "学习路径标题",
             "analysis_summary": "基于学生画像的分析总结，指出薄弱环节和注入节点原因(100字以内)",
             "nodes": [
-                {{"id": "node-1", "label": "知识点名称", "type": "standard", "proficiency": 0.8, "status": "pending"}},
+                {{
+                    "id": "p1-node-1", 
+                    "label": "知识点名称", 
+                    "type": "standard", 
+                    "phase": 1, 
+                    "proficiency": 0.8, 
+                    "status": "completed"
+                }},
+                {{
+                    "id": "p1-milestone", 
+                    "label": "第一阶段：基础储备完成", 
+                    "type": "milestone", 
+                    "phase": 1, 
+                    "proficiency": 1.0, 
+                    "status": "pending"
+                }},
                 ...
             ],
             "edges": [
-                {{"from": "node-1", "to": "node-2", "isDynamic": false}},
+                {{"from": "p1-node-1", "to": "p1-milestone", "isDynamic": false}},
+                {{"from": "p1-milestone", "to": "p2-node-1", "isDynamic": false}},
                 ...
             ]
         }}
 
         要求:
-        - 生成 4-6 个知识节点，形成有向无环图
-        - 如果学生有薄弱领域，插入 type="injected" 的补充节点(1-2个)
-        - 每个节点的 proficiency 值基于画像估算
-        - 第一个节点为 "completed"，第二第三个为 "active"，后续为 "pending"
+        - 总节点数控制在 8-12 个（包含 standard, milestone 和可能存在的 injected 节点）。
+        - 确保整个图是一个有向无环图（DAG），不可出现闭环。
+        - 每个节点的 proficiency 值基于学生画像进行合理估算。
+        - 状态分配规则：阶段1的起始节点为 "completed"，阶段1的其他节点和阶段2的起始节点为 "active"，后续节点为 "pending"。
         """
 
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": "你是一位资深课程设计师和AI教育专家。请严格按照JSON格式输出学习路径规划结果。"},
+                {"role": "system", "content": "你是一位资深课程设计师和AI教育专家。请严格按照JSON格式输出结构化的三阶段学习路径。确保没有环路。"},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.5,
+            "temperature": 0.4, # 适当降低 temperature 以保证结构化输出的稳定性
             "max_tokens": 4096,
             "response_format": {"type": "json_object"},
         }
@@ -132,37 +160,39 @@ class PathPlanner:
             return self._get_general_path_fallback(goal, profile)
 
     def _get_ai_path_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
-        """人工智能学习路径的fallback - 三个阶段设计"""
+        """人工智能学习路径的fallback - 三个阶段设计 (已补充 phase 字段以便前端统一处理)"""
         nodes = [
-            {"id": "ai-math", "label": "数学基础", "type": "standard", "proficiency": 0.8, "status": "completed"},
-            {"id": "ai-prog", "label": "编程开发", "type": "standard", "proficiency": 0.8, "status": "completed"},
-            {"id": "ai-la", "label": "线性代数", "type": "standard", "proficiency": 0.7, "status": "active"},
-            {"id": "ai-calc", "label": "微积分", "type": "standard", "proficiency": 0.7, "status": "active"},
-            {"id": "ai-stat", "label": "概率统计", "type": "standard", "proficiency": 0.7, "status": "active"},
-            {"id": "ai-python", "label": "Python核心语法", "type": "standard", "proficiency": 0.8, "status": "active"},
-            {"id": "ai-libs", "label": "数据处理库", "type": "standard", "proficiency": 0.6, "status": "pending"},
-            {"id": "ai-stage1", "label": "第一阶段：基础储备完成", "type": "milestone", "proficiency": 1.0, "status": "pending"},
-            {"id": "ai-ml", "label": "经典机器学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
-            {"id": "ai-sup", "label": "监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
-            {"id": "ai-unsup", "label": "无监督学习", "type": "standard", "proficiency": 0.4, "status": "pending"},
-            {"id": "ai-dl", "label": "深度学习基础", "type": "standard", "proficiency": 0.3, "status": "pending"},
-            {"id": "ai-frame", "label": "深度学习框架", "type": "standard", "proficiency": 0.3, "status": "pending"},
-            {"id": "ai-cv", "label": "计算机视觉", "type": "standard", "proficiency": 0.2, "status": "pending"},
-            {"id": "ai-nlp", "label": "自然语言处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
-            {"id": "ai-audio", "label": "语音信号处理", "type": "standard", "proficiency": 0.2, "status": "pending"},
-            {"id": "ai-stage2", "label": "第二阶段：核心模型掌握", "type": "milestone", "proficiency": 1.0, "status": "pending"},
-            {"id": "ai-transformer", "label": "Transformer架构", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-llm", "label": "大语言模型原理", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-app", "label": "应用开发层", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-tech", "label": "模型调优层", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-ops", "label": "工程部署层", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-rag", "label": "RAG检索增强", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-agent", "label": "AI智能体", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-ft", "label": "LoRA/PEFT微调", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-rlhf", "label": "强化学习对齐", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-quant", "label": "模型量化/加速", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-mlops", "label": "MLOps运维部署", "type": "standard", "proficiency": 0.1, "status": "pending"},
-            {"id": "ai-finish", "label": "人工智能专家路径达成", "type": "milestone", "proficiency": 1.0, "status": "pending"},
+            {"id": "ai-math", "label": "数学基础", "type": "standard", "phase": 1, "proficiency": 0.8, "status": "completed"},
+            {"id": "ai-prog", "label": "编程开发", "type": "standard", "phase": 1, "proficiency": 0.8, "status": "completed"},
+            {"id": "ai-la", "label": "线性代数", "type": "standard", "phase": 1, "proficiency": 0.7, "status": "active"},
+            {"id": "ai-calc", "label": "微积分", "type": "standard", "phase": 1, "proficiency": 0.7, "status": "active"},
+            {"id": "ai-stat", "label": "概率统计", "type": "standard", "phase": 1, "proficiency": 0.7, "status": "active"},
+            {"id": "ai-python", "label": "Python核心语法", "type": "standard", "phase": 1, "proficiency": 0.8, "status": "active"},
+            {"id": "ai-libs", "label": "数据处理库", "type": "standard", "phase": 1, "proficiency": 0.6, "status": "pending"},
+            {"id": "ai-stage1", "label": "第一阶段：基础储备完成", "type": "milestone", "phase": 1, "proficiency": 1.0, "status": "pending"},
+            
+            {"id": "ai-ml", "label": "经典机器学习", "type": "standard", "phase": 2, "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-sup", "label": "监督学习", "type": "standard", "phase": 2, "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-unsup", "label": "无监督学习", "type": "standard", "phase": 2, "proficiency": 0.4, "status": "pending"},
+            {"id": "ai-dl", "label": "深度学习基础", "type": "standard", "phase": 2, "proficiency": 0.3, "status": "pending"},
+            {"id": "ai-frame", "label": "深度学习框架", "type": "standard", "phase": 2, "proficiency": 0.3, "status": "pending"},
+            {"id": "ai-cv", "label": "计算机视觉", "type": "standard", "phase": 2, "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-nlp", "label": "自然语言处理", "type": "standard", "phase": 2, "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-audio", "label": "语音信号处理", "type": "standard", "phase": 2, "proficiency": 0.2, "status": "pending"},
+            {"id": "ai-stage2", "label": "第二阶段：核心模型掌握", "type": "milestone", "phase": 2, "proficiency": 1.0, "status": "pending"},
+            
+            {"id": "ai-transformer", "label": "Transformer架构", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-llm", "label": "大语言模型原理", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-app", "label": "应用开发层", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-tech", "label": "模型调优层", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-ops", "label": "工程部署层", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-rag", "label": "RAG检索增强", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-agent", "label": "AI智能体", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-ft", "label": "LoRA/PEFT微调", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-rlhf", "label": "强化学习对齐", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-quant", "label": "模型量化/加速", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-mlops", "label": "MLOps运维部署", "type": "standard", "phase": 3, "proficiency": 0.1, "status": "pending"},
+            {"id": "ai-finish", "label": "人工智能专家路径达成", "type": "milestone", "phase": 3, "proficiency": 1.0, "status": "pending"},
         ]
 
         edges = [
@@ -214,7 +244,7 @@ class PathPlanner:
         }
 
     def _get_general_path_fallback(self, goal: str, profile: ProfileDimensions | dict | None = None) -> dict:
-        """通用学习路径的fallback"""
+        """通用学习路径的fallback (已补充 phase 字段)"""
         has_weakness = False
         if profile:
             if isinstance(profile, dict):
@@ -223,10 +253,10 @@ class PathPlanner:
                 has_weakness = profile.knowledge_base_score < 60
 
         nodes = [
-            {"id": "n1", "label": f"{goal}基础概念", "type": "standard", "proficiency": 0.8, "status": "completed"},
-            {"id": "n2", "label": f"{goal}核心原理", "type": "standard", "proficiency": 0.6, "status": "active"},
-            {"id": "n3", "label": f"{goal}进阶应用", "type": "standard", "proficiency": 0.3, "status": "pending"},
-            {"id": "n4", "label": f"{goal}实战项目", "type": "standard", "proficiency": 0.0, "status": "pending"},
+            {"id": "n1", "label": f"{goal}基础概念", "type": "standard", "phase": 1, "proficiency": 0.8, "status": "completed"},
+            {"id": "n2", "label": f"{goal}核心原理", "type": "standard", "phase": 2, "proficiency": 0.6, "status": "active"},
+            {"id": "n3", "label": f"{goal}进阶应用", "type": "standard", "phase": 3, "proficiency": 0.3, "status": "pending"},
+            {"id": "n4", "label": f"{goal}实战项目", "type": "standard", "phase": 3, "proficiency": 0.0, "status": "pending"},
         ]
         edges = [
             {"from": "n1", "to": "n2", "isDynamic": False},

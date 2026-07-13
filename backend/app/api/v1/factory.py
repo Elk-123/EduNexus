@@ -237,17 +237,65 @@ async def chat_with_agent(
     agent_id: str,
     payload: AgentChatRequest,
     current_user: Student = Depends(deps.get_current_user),
+    db: AsyncSession = Depends(deps.get_db),
 ):
-    """与指定智能体对话"""
+    """与指定智能体深度对话（基于 pipeline 上下文）
+
+    支持两种上下文注入方式：
+    1. payload.task_id — v1 任务：从 generated_resources 表加载该 agent 的已生成内容
+    2. payload.context  — v2 任务 / 前端直接传递的上下文文本
+    两者可同时提供，context 会追加到自动加载的内容之后。
+    """
     valid_agents = {"professor", "architect", "examiner", "director", "hacker", "reviewer"}
     if agent_id not in valid_agents:
         raise HTTPException(status_code=400, detail=f"无效的智能体ID。可选: {', '.join(valid_agents)}")
 
-    content = await generator.generate_for_agent(agent_id, payload.message)
-    return AgentChatResponse(
-        reply=f"关于「{payload.message}」，作为{agent_id}智能体，我认为：{json.dumps(content, ensure_ascii=False)[:500]}",
-        agent_type=agent_id,
-    )
+    # ── 构建上下文 ──────────────────────────────────────────
+    context_parts: list[str] = []
+
+    # --- 方式1: 从 task_id 自动加载 ---
+    if payload.task_id:
+        try:
+            uid = UUID(payload.task_id)
+            # v1 任务：查询数据库
+            result = await db.execute(
+                select(GeneratedResource).where(
+                    GeneratedResource.task_id == uid,
+                    GeneratedResource.student_id == current_user.id,
+                    GeneratedResource.agent_type == agent_id,
+                )
+            )
+            db_resource = result.scalars().first()
+            if db_resource and db_resource.content:
+                context_parts.append(
+                    f"[已生成内容] 你之前为任务 {payload.task_id} 生成了以下内容：\n"
+                    f"{json.dumps(db_resource.content, ensure_ascii=False, indent=2)[:3000]}"
+                )
+        except ValueError:
+            # v2 任务 (task_xxx) / 其他格式：数据库无记录，依赖前端传递 context
+            if not payload.context:
+                logger.warning(f"v2 task {payload.task_id} 无 DB 记录且未传递 context，对话将缺少上下文")
+
+    # --- 方式2: 前端直接传递 ---
+    if payload.context:
+        context_parts.append(f"[上下文] {payload.context}")
+
+    context = "\n\n".join(context_parts) if context_parts else ""
+
+    # ── 调用对话方法（有上下文走 DeepSeek 对话，无上下文走生成） ──
+    if context:
+        result = await generator.chat_with_agent(agent_id, payload.message, context)
+        return AgentChatResponse(
+            reply=result["reply"],
+            agent_type=result["agent_type"],
+        )
+    else:
+        # 无上下文时回退到 generate_for_agent（保持向后兼容）
+        content = await generator.generate_for_agent(agent_id, payload.message)
+        return AgentChatResponse(
+            reply=f"关于「{payload.message}」，作为{agent_id}智能体，我认为：{json.dumps(content, ensure_ascii=False)[:500]}",
+            agent_type=agent_id,
+        )
 
 
 @router.websocket("/stream/{task_id}")
