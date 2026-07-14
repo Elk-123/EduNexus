@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
+    # Qwen3-VL-Flash API (用于 AI 搜题 / Tutor 模块)
+    QWEN_API_KEY: str = "sk-ce13c43302fb4063b8c9eff105ae856f"
+    QWEN_API_URL: str = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
+    QWEN_MODEL: str = "qwen3-vl-flash"
+
     # Demo mode — 演示时跳过真实 LLM 调用，直接返回 fallback 内容
     DEMO_MODE: bool = False
 

@@ -1,119 +1,63 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowRight, Loader2, CheckCircle2, Lightbulb, Key, GitBranch, ListTree, Database, Upload, ImageIcon, X, ScanEye } from 'lucide-vue-next'
+import {
+  ArrowRight, Loader2, CheckCircle2, Lightbulb,
+  Key, GitBranch, ListTree, Database, Search, Calculator,
+  FileText, Beaker, FlaskConical, ScanEye,
+  Upload, ImageIcon, X, AlertCircle,
+} from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
+import { solveProblem } from '@/api/tutor'
+import type { SolveStep } from '@/types/tutor'
 
+// ── 状态 ──
 const uploadedImage = ref<string | null>(null)
 const isSolving = ref(false)
-const solution = ref<any>(null)
+const solution = ref<{ steps: UiStep[]; summary: string } | null>(null)
 const solverLog = ref<string[]>([])
+const errorMessage = ref<string | null>(null)
 
-// ── Mock 解答：数据库范式分解 ──
-const mockSolution = {
-  steps: [
-    {
-      title: 'Step 1：分析函数依赖',
-      icon: ListTree,
-      color: 'text-blue-400',
-      bg: 'bg-blue-500/5 border-blue-500/15',
-      content: [
-        '从关系 R(A,B,C,D,E,F) 和数据实例出发，确定属性间的函数依赖关系：',
-        '',
-        '• A → B   (职工号 → 职工名)     每个职工号唯一确定一个姓名',
-        '• A → C   (职工号 → 年龄)       每个职工号唯一确定年龄',
-        '• A → D   (职工号 → 性别)       每个职工号唯一确定性别',
-        '• A → E   (职工号 → 单位号)     每个职工号唯一确定所属单位',
-        '• E → F   (单位号 → 单位名)     每个单位号唯一确定单位名称',
-        '',
-        '综上，函数依赖集 F = { A→B, A→C, A→D, A→E, E→F }',
-      ],
-    },
-    {
-      title: 'Step 2：确定候选码 (Candidate Key)',
-      icon: Key,
-      color: 'text-amber-400',
-      bg: 'bg-amber-500/5 border-amber-500/15',
-      content: [
-        '属性 A 的闭包 A⁺：',
-        '',
-        '  A⁺ = {A}',
-        '  → 由 A→B 得 A⁺ = {A, B}',
-        '  → 由 A→C 得 A⁺ = {A, B, C}',
-        '  → 由 A→D 得 A⁺ = {A, B, C, D}',
-        '  → 由 A→E 得 A⁺ = {A, B, C, D, E}',
-        '  → 由 E→F 得 A⁺ = {A, B, C, D, E, F}  = R 的全属性集',
-        '',
-        '∵ A⁺ 包含了 R 的全部属性，且 A 无法再缩小',
-        '∴ A (职工号) 是唯一的候选码。',
-        '',
-        '主属性：A',
-        '非主属性：B, C, D, E, F',
-      ],
-    },
-    {
-      title: 'Step 3：判断范式等级',
-      icon: GitBranch,
-      color: 'text-purple-400',
-      bg: 'bg-purple-500/5 border-purple-500/15',
-      content: [
-        '① 1NF 检查：',
-        '   所有属性均为原子类型，满足 1NF。✓',
-        '',
-        '② 2NF 检查：',
-        '   候选码为单属性 A，不存在非主属性对候选码的部分函数依赖。',
-        '   满足 2NF。✓',
-        '',
-        '③ 3NF 检查：',
-        '   考察是否存在非主属性对候选码的传递函数依赖：',
-        '',
-        '   A → E  (职工号决定单位号)',
-        '   E → F  (单位号决定单位名)',
-        '   ∴ A → F 是传递函数依赖 (A→E, E→F, 且 E↛A)',
-        '',
-        '   F 通过 E 传递依赖于候选码 A，违反 3NF 条件。',
-        '',
-        '结论：R ∈ 2NF，但 ∉ 3NF。',
-      ],
-    },
-    {
-      title: 'Step 4：规范化为 3NF — 消除传递依赖',
-      icon: Database,
-      color: 'text-emerald-400',
-      bg: 'bg-emerald-500/5 border-emerald-500/15',
-      content: [
-        '消除传递函数依赖 A→E→F，将原关系分解为两个子关系：',
-        '',
-        '┌─────────────────────────────────────────────────────┐',
-        '│  R1 (职工信息)                                       │',
-        '│  属性: A(职工号), B(职工名), C(年龄), D(性别), E(单位号) │',
-        '│  主码: A                                            │',
-        '│  函数依赖: A→B, A→C, A→D, A→E                      │',
-        '│  满足 3NF（不存在传递依赖）                            │',
-        '├─────────────────────────────────────────────────────┤',
-        '│  R2 (单位信息)                                       │',
-        '│  属性: E(单位号), F(单位名)                            │',
-        '│  主码: E                                            │',
-        '│  函数依赖: E→F                                       │',
-        '│  满足 3NF                                            │',
-        '└─────────────────────────────────────────────────────┘',
-        '',
-        '分解后 R1 和 R2 均满足 3NF，且通过外码 R1.E → R2.E 保持无损连接。',
-      ],
-    },
-  ],
-  summary: '原关系 R 属于 2NF，通过消除传递依赖 A→E→F 分解为 R1(职工信息) 和 R2(单位信息)，两者均满足 3NF。',
+// ── UI 增强后的步骤类型 ──
+interface UiStep {
+  title: string
+  content: string[]
+  icon: any
+  color: string
+  bg: string
 }
 
-const mockLogs = [
-  '收到图片，启动 OCR 文字识别...',
-  'OCR 识别完成，提取题目文本...',
-  '题目类型识别：数据库范式规范化问题',
-  '提取属性集: {A,B,C,D,E,F}，扫描数据实例...',
-  '推断函数依赖: A→B, A→C, A→D, A→E, E→F',
-  '计算候选码闭包 A⁺ = {A,B,C,D,E,F}',
-  '检测到传递依赖: A→E→F',
-  '判定当前范式: 2NF (不满足3NF)',
-  '规划3NF分解: R1(A,B,C,D,E), R2(E,F)',
+// ── 图标/颜色分配策略 ──
+const stepPresets = [
+  { icons: [Search, ListTree, FileText], color: 'text-blue-400', bg: 'bg-blue-500/5 border-blue-500/15' },
+  { icons: [Key, Calculator, GitBranch], color: 'text-amber-400', bg: 'bg-amber-500/5 border-amber-500/15' },
+  { icons: [GitBranch, Lightbulb, Beaker], color: 'text-purple-400', bg: 'bg-purple-500/5 border-purple-500/15' },
+  { icons: [Database, FlaskConical, ListTree], color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/15' },
+  { icons: [CheckCircle2, Lightbulb, Search], color: 'text-rose-400', bg: 'bg-rose-500/5 border-rose-500/15' },
+]
+
+function enhanceSteps(steps: SolveStep[]): UiStep[] {
+  return steps.map((step, i) => {
+    const preset = stepPresets[i % stepPresets.length]
+    const iconIndex = i % preset.icons.length
+    return {
+      title: step.title,
+      content: step.content,
+      icon: preset.icons[iconIndex],
+      color: preset.color,
+      bg: preset.bg,
+    }
+  })
+}
+
+// ── 模拟推理日志（纯 UI 动画，提升体验）──
+const baseMockLogs = [
+  '收到图片，启动 Qwen3-VL-Flash 视觉识别...',
+  '视觉模型分析图片内容，提取题目信息...',
+  '识别题目类型与知识点归属...',
+  '构建解题策略，规划推理步骤...',
+  '执行逐步推理与计算...',
+  '验证计算结果与逻辑一致性...',
+  '整理输出结构化解答...',
 ]
 
 // ── 图片上传处理 ──
@@ -131,6 +75,7 @@ function processFile(file: File) {
     uploadedImage.value = reader.result as string
     solution.value = null
     solverLog.value = []
+    errorMessage.value = null
   }
   reader.readAsDataURL(file)
 }
@@ -157,6 +102,7 @@ function clearImage() {
   uploadedImage.value = null
   solution.value = null
   solverLog.value = []
+  errorMessage.value = null
 }
 
 // ── 解题 ──
@@ -166,15 +112,58 @@ async function solve() {
   isSolving.value = true
   solution.value = null
   solverLog.value = []
+  errorMessage.value = null
 
-  for (const log of mockLogs) {
-    await new Promise(r => setTimeout(r, 200 + Math.random() * 300))
-    solverLog.value = [...solverLog.value, log]
+  // 播放模拟推理日志（纯 UI 动画）
+  const logTimer = playMockLogs()
+
+  try {
+    // 提取纯 base64（去掉 data:...;base64, 前缀 — 后端会处理，这里保持兼容）
+    const imageBase64 = uploadedImage.value
+
+    const res = await solveProblem({
+      image_base64: imageBase64,
+      message: '请帮我详细解答这道题目',
+    })
+
+    // 停止模拟日志
+    clearInterval(logTimer)
+
+    // 补全日志最后几条
+    solverLog.value = [
+      ...baseMockLogs,
+      `解答完成：共 ${res.steps.length} 个步骤`,
+    ]
+
+    // 短暂延迟让用户看到日志完成
+    await new Promise(r => setTimeout(r, 400))
+
+    solution.value = {
+      steps: enhanceSteps(res.steps),
+      summary: res.summary,
+    }
+  } catch (err: any) {
+    clearInterval(logTimer)
+    const msg = err?.response?.data?.detail
+      || err?.message
+      || '网络请求失败，请检查后端服务是否启动'
+    errorMessage.value = msg
+    solverLog.value = []
+  } finally {
+    isSolving.value = false
   }
+}
 
-  await new Promise(r => setTimeout(r, 400))
-  solution.value = mockSolution
-  isSolving.value = false
+function playMockLogs(): ReturnType<typeof setInterval> {
+  let i = 0
+  solverLog.value = [baseMockLogs[0]]
+
+  return setInterval(() => {
+    i++
+    if (i < baseMockLogs.length) {
+      solverLog.value = [...solverLog.value, baseMockLogs[i]]
+    }
+  }, 250 + Math.random() * 350)
 }
 </script>
 
@@ -188,7 +177,10 @@ async function solve() {
       <!-- 头部 -->
       <div class="mb-8">
         <h1 class="text-3xl font-bold text-white mb-2">智能辅导 · 题目解答</h1>
-        <p class="text-zinc-500 text-sm">上传题目图片，AI 导师识别并逐步分析解答</p>
+        <p class="text-zinc-500 text-sm">
+          上传题目图片，AI 导师识别并逐步分析解答
+          <span class="ml-2 text-xs text-zinc-600">Powered by Qwen3-VL-Flash</span>
+        </p>
       </div>
 
       <!-- 上传 / 粘贴区域 -->
@@ -210,8 +202,10 @@ async function solve() {
             @change="handleFileInput"
           />
           <Upload class="w-10 h-10 text-zinc-600 mx-auto mb-4" />
-          <p class="text-sm text-zinc-400 mb-2">点击上传、拖拽图片到此处，或 <span class="text-blue-400">Ctrl+V</span> 粘贴</p>
-          <p class="text-xs text-zinc-600">支持 JPG / PNG / WebP</p>
+          <p class="text-sm text-zinc-400 mb-2">
+            点击上传、拖拽图片到此处，或 <span class="text-blue-400">Ctrl+V</span> 粘贴
+          </p>
+          <p class="text-xs text-zinc-600">支持 JPG / PNG / WebP — Qwen3-VL-Flash 直接理解图片内容</p>
         </div>
 
         <!-- 已上传：预览 + 操作 -->
@@ -238,16 +232,25 @@ async function solve() {
               alt="题目图片"
               class="w-full max-h-[400px] object-contain"
             />
-            <!-- OCR 识别中遮罩 -->
+            <!-- 识别中遮罩 -->
             <div
               v-if="isSolving && solverLog.length <= 1"
               class="absolute inset-0 bg-black/60 flex items-center justify-center backdrop-blur-sm"
             >
               <div class="text-center">
                 <ScanEye class="w-8 h-8 text-blue-400 mx-auto mb-2 animate-pulse" />
-                <p class="text-xs text-blue-300">OCR 识别中...</p>
+                <p class="text-xs text-blue-300">视觉识别中...</p>
               </div>
             </div>
+          </div>
+
+          <!-- 错误提示 -->
+          <div
+            v-if="errorMessage"
+            class="flex items-start gap-3 p-4 rounded-xl bg-red-500/5 border border-red-500/20 mb-5"
+          >
+            <AlertCircle class="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+            <p class="text-sm text-red-300">{{ errorMessage }}</p>
           </div>
 
           <Button
@@ -257,13 +260,16 @@ async function solve() {
           >
             <Loader2 v-if="isSolving" class="w-4 h-4 animate-spin" />
             <ArrowRight v-else class="w-4 h-4" />
-            {{ isSolving ? '正在解答...' : '开始解答' }}
+            {{ isSolving ? 'Qwen3-VL-Flash 正在解答...' : '开始解答' }}
           </Button>
         </div>
       </div>
 
       <!-- 求解日志 (流式) -->
-      <div v-if="solverLog.length > 0 && !solution" class="bg-[#131314] border border-[#202022] rounded-[2rem] p-6 mb-8 font-mono">
+      <div
+        v-if="solverLog.length > 0 && !solution"
+        class="bg-[#131314] border border-[#202022] rounded-[2rem] p-6 mb-8 font-mono"
+      >
         <p class="text-[10px] text-zinc-500 uppercase tracking-wider mb-4">推理过程</p>
         <div class="space-y-2">
           <div
@@ -277,7 +283,7 @@ async function solve() {
         </div>
         <div v-if="isSolving" class="flex items-center gap-2 mt-3 text-xs text-zinc-500">
           <Loader2 class="w-3 h-3 animate-spin" />
-          正在推理...
+          正在等待 Qwen3-VL-Flash 响应...
         </div>
       </div>
 
@@ -293,7 +299,10 @@ async function solve() {
               <component :is="step.icon" :class="['w-5 h-5', step.color]" />
             </div>
             <h3 :class="['text-base font-bold', step.color]">{{ step.title }}</h3>
-            <CheckCircle2 v-if="i < solution.steps.length" class="w-4 h-4 text-emerald-500 ml-auto" />
+            <CheckCircle2
+              v-if="i < solution.steps.length"
+              class="w-4 h-4 text-emerald-500 ml-auto"
+            />
           </div>
           <div class="ml-12 space-y-1">
             <p
@@ -305,7 +314,7 @@ async function solve() {
                   ? 'font-mono text-zinc-400 leading-snug'
                   : line === ''
                     ? 'h-2'
-                    : 'text-zinc-300 leading-relaxed'
+                    : 'text-zinc-300 leading-relaxed',
               ]"
             >{{ line }}</p>
           </div>
