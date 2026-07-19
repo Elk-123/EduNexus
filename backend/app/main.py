@@ -1,9 +1,23 @@
 import os
+import sys
+import logging
 import certifi
 from contextlib import asynccontextmanager
 import traceback
 from typing import Any
 from datetime import datetime
+
+# ── 日志配置 ──
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s | %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stdout,
+)
+# 第三方库日志保持 WARNING，避免噪音
+logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # 设置 SSL 证书路径（修复 Windows 下 httpx/aiohttp 的 SSL 问题）
 # 注意：必须强制覆盖，因为可能有残留的无效路径

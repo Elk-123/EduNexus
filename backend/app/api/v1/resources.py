@@ -1,7 +1,8 @@
 from uuid import UUID
 import aiohttp
+import asyncio
 from datetime import datetime, timedelta
-
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -11,8 +12,8 @@ from app.models.student import Student
 from app.models.factory import GeneratedResource
 from app.schemas.resources import TodayResourceResponse, ResourceDetailResponse, ProgressUpdateRequest, TrendingItem
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
-
 
 # AI 主题固定内容（个人专属学习流 mock）
 AI_RESOURCES = [
@@ -101,95 +102,186 @@ async def get_today_resources(
 async def get_trending(
     current_user: Student = Depends(deps.get_current_user),
 ):
-    """获取 CS 行业热点（HackerNews + GitHub + Arxiv）"""
-    trending_items = []
+    """获取 CS 行业热点，优先实时数据 → 不可用时回退 mock"""
+    logger.info("Request '/trending' for student: %s", current_user.username)
 
-    # 1. 尝试从 HackerNews Algolia API 获取最新科技讨论
-    try:
-        async with aiohttp.ClientSession() as session:
+    async def fetch_hn(session: aiohttp.ClientSession) -> list[TrendingItem]:
+        """HackerNews Algolia API — 搜索近期高热度科技文章"""
+        url = "https://hn.algolia.com/api/v1/search"
+        try:
             async with session.get(
-                "http://hn.algolia.com/api/v1/search_by_date",
+                url,
                 params={
-                    "query": "programming OR rust OR ai OR machine learning",
+                    "query": "ai OR llm OR programming OR rust OR python",
                     "tags": "story",
-                    "hitsPerPage": 3
-                }
+                    "hitsPerPage": 3,
+                },
+                timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    for hit in data.get('hits', [])[:2]:
-                        points = hit.get('points', 0)
-                        trending_items.append(TrendingItem(
-                            source="HackerNews",
-                            title=hit.get('title', hit.get('url', '')).split('/')[-1][:40] or hit.get('objectID', ''),
-                            meta=f"{points} points",
-                            tag="Discussion",
-                            url=hit.get('url') or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
-                        ))
-    except Exception:
-        pass
+                if resp.status != 200:
+                    body = (await resp.text())[:200]
+                    print(f"  [HN] HTTP {resp.status}: {body}")
+                    return []
+                data = await resp.json()
+                hits = data.get("hits", [])
+                if not hits:
+                    print(f"  [HN] 200 OK 但 hits=0")
+                items = []
+                for hit in hits[:2]:
+                    title = hit.get("title") or hit.get("url", "").split("/")[-1] or hit.get("objectID", "")
+                    if len(title) > 60:
+                        title = title[:57] + "..."
+                    items.append(TrendingItem(
+                        source="HackerNews",
+                        title=title,
+                        meta=f"{hit.get('points', 0)} points",
+                        tag="Discussion",
+                        url=hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID')}",
+                    ))
+                return items
+        except asyncio.TimeoutError:
+            print(f"  [HN] 超时 (5s): {url}")
+        except aiohttp.ClientConnectorError as e:
+            print(f"  [HN] 连接失败 (DNS/网络): {e}")
+        except Exception as e:
+            print(f"  [HN] 异常 ({type(e).__name__}): {e}")
+        return []
 
-    # 2. 尝试从 GitHub 获取热门仓库
-    try:
-        async with aiohttp.ClientSession() as session:
+    async def fetch_github(session: aiohttp.ClientSession) -> list[TrendingItem]:
+        """GitHub Search API — 热门仓库（sort by stars）"""
+        url = "https://api.github.com/search/repositories"
+        try:
             async with session.get(
-                "https://api.github.com/search/repositories",
+                url,
                 params={
-                    "q": "language:python OR language:rust OR language:go stars:>1000",
+                    "q": "ai agent OR llm OR machine learning stars:>1000",
                     "sort": "stars",
                     "order": "desc",
-                    "per_page": 2
-                }
+                    "per_page": 3,
+                },
+                headers={"Accept": "application/vnd.github+json"},
+                timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    for repo in data.get('items', [])[:1]:
-                        trending_items.append(TrendingItem(
-                            source="GitHub",
-                            title=repo['name'],
-                            meta=f"{repo['stargazers_count']} stars",
-                            tag="Repository",
-                            url=repo['html_url'],
-                        ))
-    except Exception:
-        pass
+                if resp.status != 200:
+                    body = (await resp.text())[:300]
+                    print(f"  [GitHub] HTTP {resp.status}: {body}")
+                    return []
+                data = await resp.json()
+                repos = data.get("items", [])
+                if not repos:
+                    print(f"  [GitHub] 200 OK 但 items=0 (total_count={data.get('total_count', '?')})")
+                items = []
+                for repo in repos[:2]:
+                    items.append(TrendingItem(
+                        source="GitHub",
+                        title=repo.get("full_name", repo.get("name", "")),
+                        meta=f"{repo.get('stargazers_count', 0):,} stars",
+                        tag="Repository",
+                        url=repo.get("html_url", ""),
+                    ))
+                return items
+        except asyncio.TimeoutError:
+            print(f"  [GitHub] 超时 (5s): {url}")
+        except aiohttp.ClientConnectorError as e:
+            print(f"  [GitHub] 连接失败 (DNS/网络): {e}")
+        except Exception as e:
+            print(f"  [GitHub] 异常 ({type(e).__name__}): {e}")
+        return []
 
-    # 3. 尝试从 Arxiv 获取最新 AI 论文
-    try:
-        async with aiohttp.ClientSession() as session:
+    async def fetch_arxiv(session: aiohttp.ClientSession) -> list[TrendingItem]:
+        """Arxiv API — 最新 AI/ML 论文"""
+        url = "https://export.arxiv.org/api/query"
+        import re
+        try:
             async with session.get(
-                "http://export.arxiv.org/api/query",
+                url,
                 params={
                     "search_query": "cat:cs.AI OR cat:cs.LG",
                     "start": 0,
-                    "max_results": 1,
+                    "max_results": 3,
                     "sortBy": "submittedDate",
-                    "sortOrder": "descending"
-                }
+                    "sortOrder": "descending",
+                },
+                timeout=aiohttp.ClientTimeout(total=8),
             ) as resp:
-                if resp.status == 200:
-                    xml_text = await resp.text()
-                    import re
-                    title_match = re.search(r'<title>(.*?)</title>', xml_text)
-                    if title_match:
-                        title = title_match.group(1).replace('\n', ' ').strip()
-                        trending_items.append(TrendingItem(
-                            source="Arxiv",
-                            title=title[:50] + '...' if len(title) > 50 else title,
-                            meta="Hot in cs.AI/LG",
-                            tag="Research",
-                            url="https://arxiv.org/list/cs.AI/recent",
-                        ))
-    except Exception:
-        pass
+                if resp.status != 200:
+                    body = (await resp.text())[:200]
+                    print(f"  [Arxiv] HTTP {resp.status}: {body}")
+                    return []
+                xml_text = await resp.text()
+                # 解析 <entry> 而不是 <feed> 根标题
+                entries = re.findall(r"<entry>(.*?)</entry>", xml_text, re.DOTALL)
+                if not entries:
+                    print(f"  [Arxiv] 200 OK 但 XML 中无 <entry> 元素")
+                    return []
+                items = []
+                for entry_xml in entries[:2]:
+                    title_m = re.search(r"<title>(.*?)</title>", entry_xml, re.DOTALL)
+                    if not title_m:
+                        continue
+                    title = title_m.group(1).replace("\n", " ").strip()
+                    if len(title) > 60:
+                        title = title[:57] + "..."
+                    # 取第一个 author 作为 meta
+                    author_m = re.search(r"<name>(.*?)</name>", entry_xml)
+                    meta = f"by {author_m.group(1)}" if author_m else "cs.AI/LG"
+                    # 取 arxiv id 构造链接
+                    id_m = re.search(r"<id>(.*?)</id>", entry_xml)
+                    paper_url = id_m.group(1).strip() if id_m else "https://arxiv.org/list/cs.AI/recent"
+                    items.append(TrendingItem(
+                        source="Arxiv",
+                        title=title,
+                        meta=meta[:40],
+                        tag="Research",
+                        url=paper_url,
+                    ))
+                if not items:
+                    print(f"  [Arxiv] 200 OK 有 {len(entries)} 个 entry 但无有效标题")
+                return items
+        except asyncio.TimeoutError:
+            print(f"  [Arxiv] 超时 (8s): {url}")
+        except aiohttp.ClientConnectorError as e:
+            print(f"  [Arxiv] 连接失败 (DNS/网络): {e}")
+        except Exception as e:
+            print(f"  [Arxiv] 异常 ({type(e).__name__}): {e}")
+        return []
 
-    # 4. 如果数据不足，使用 CS 主题 fallback
+    # 并发请求三个数据源（总超时 ~6s）
+    trending_items: list[TrendingItem] = []
+    print(f"[trending] 开始并发请求 HN / GitHub / Arxiv ...")
+    try:
+        async with aiohttp.ClientSession() as session:
+            results = await asyncio.gather(
+                fetch_hn(session),
+                fetch_github(session),
+                fetch_arxiv(session),
+                return_exceptions=True,
+            )
+        hn_count = len(results[0]) if isinstance(results[0], list) else 0
+        gh_count = len(results[1]) if isinstance(results[1], list) else 0
+        ar_count = len(results[2]) if isinstance(results[2], list) else 0
+        print(f"[trending] 外部 API 结果: HN={hn_count}条, GitHub={gh_count}条, Arxiv={ar_count}条")
+        for i, r in enumerate(results):
+            if isinstance(r, Exception):
+                print(f"[trending] 数据源 {i} 异常: {r}")
+            elif isinstance(r, list):
+                trending_items.extend(r)
+    except Exception as e:
+        print(f"[trending] 聚合异常: {e}")
+        logger.warning("Trending aggregator error: %s", e)
+
+    # 外部数据不足 → 回退 mock
     if len(trending_items) < 3:
+        print(f"[trending] 外部数据不足 ({len(trending_items)}条)，使用 CS fallback 补齐")
+        logger.info("外部 API 数据不足 (%d条)，使用 CS fallback 补齐", len(trending_items))
         for item in CS_TRENDING_FALLBACK:
-            if len(trending_items) < 3:
-                trending_items.append(TrendingItem(**item))
+            if len(trending_items) >= 5:
+                break
+            trending_items.append(TrendingItem(**item))
 
-    return trending_items[:3]  # 确保只返回 3 条
+    print(f"[trending] 最终返回 {len(trending_items)} 条")
+    logger.info("Trending 返回 %d 条", len(trending_items))
+    return trending_items
 
 
 @router.get("/{resource_id}", response_model=ResourceDetailResponse)

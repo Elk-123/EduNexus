@@ -205,7 +205,7 @@ function playMockLogs(): ReturnType<typeof setInterval> {
           <p class="text-sm text-zinc-400 mb-2">
             点击上传、拖拽图片到此处，或 <span class="text-blue-400">Ctrl+V</span> 粘贴
           </p>
-          <p class="text-xs text-zinc-600">支持 JPG / PNG / WebP — Qwen3-VL-Flash 直接理解图片内容</p>
+          <p class="text-xs text-zinc-600">支持 JPG / PNG / WebP — Qwen3-VL-Flash 理解图片内容</p>
         </div>
 
         <!-- 已上传：预览 + 操作 -->

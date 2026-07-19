@@ -134,8 +134,8 @@ export const useDeliveryStore = defineStore('delivery', () => {
   async function fetchTrending() {
     try {
       const data = await getTrending()
-      // 后端固定返回 3 条，演示用 fallback 6 条替换
-      trendingItems.value = data.length >= 6 ? data : fallbackTrendingItems
+      // 后端有数据就用后端，网络/API 异常时 catch 走 fallback
+      trendingItems.value = data.length > 0 ? data : fallbackTrendingItems
     } catch {
       trendingItems.value = fallbackTrendingItems
     }
