@@ -101,8 +101,9 @@ class OnboardingChatService:
         payload = {
             "model": self.model,
             "messages": full_messages,
-            "temperature": 0.7,
+            "temperature": 0.3,
             "max_tokens": 1024,
+            # "response_format": {"type": "json_object"},
             "thinking": {"type": "disabled"},
         }
 

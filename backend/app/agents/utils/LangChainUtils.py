@@ -45,7 +45,7 @@ class LangChainUtils:
     """LangChain工具类 (DeepSeek API)"""
 
     @classmethod
-    def initialize_model(cls, api_key: str, model_name: str = "deepseek-chat") -> None:
+    def initialize_model(cls, api_key: str, model_name: str = "deepseek-chat", base_url: str = "https://api.deepseek.com") -> None:
         """初始化DeepSeek LangChain模型（线程安全）
 
         Args:
@@ -59,10 +59,10 @@ class LangChainUtils:
             _model = ChatOpenAI(
                 model=model_name,
                 api_key=api_key,
-                base_url="https://api.deepseek.com",
+                base_url=base_url,
                 temperature=0.7,
             )
-            logger.info("LangChain model initialized: %s via DeepSeek API", model_name)
+            logger.info("LangChain model initialized: %s via %s", model_name, base_url)
 
     @classmethod
     def _get_model(cls):

@@ -255,7 +255,7 @@ function enterSystem() {
                       stroke-width="5"
                       stroke-linecap="round"
                       :stroke-dasharray="(gaugeRadius(dim.score!, dim.maxScore!) / 100) * 175.93 + ' ' + (175.93 - (gaugeRadius(dim.score!, dim.maxScore!) / 100) * 175.93)"
-                      class="transition-all duration-[1500ms] ease-out"
+                      class="transition-all [transition-duration:1500ms] ease-out"
                     />
                   </svg>
                   <div class="absolute inset-0 flex flex-col items-center justify-center">
@@ -267,7 +267,7 @@ function enterSystem() {
                   <p class="text-xs font-medium text-zinc-300">{{ dim.description }}</p>
                   <div class="mt-2 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                     <div
-                      :class="['h-full rounded-full shadow-[0_0_8px_currentColor] transition-all duration-[1500ms] ease-out', colorMap[dim.color].bar]"
+                      :class="['h-full rounded-full shadow-[0_0_8px_currentColor] transition-all [transition-duration:1500ms] ease-out', colorMap[dim.color].bar]"
                       :style="{ width: gaugeRadius(dim.score!, dim.maxScore!) + '%' }"
                     ></div>
                   </div>
@@ -314,7 +314,7 @@ function enterSystem() {
       <!-- ===== 3. 底部 CTA ===== -->
       <div
         :class="[
-          'text-center space-y-5 transition-all duration-1000 delay-[1200ms]',
+          'text-center space-y-5 transition-all duration-1000 [transition-delay:1200ms]',
           isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
         ]"
       >

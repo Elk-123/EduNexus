@@ -348,14 +348,16 @@ def _get_v2_coordinator() -> AgentCoordinator:
         if _v2_coordinator is not None:
             return _v2_coordinator
 
-        # 初始化 DeepSeek 模型
-        from app.core.config import settings
-        api_key = getattr(settings, 'DEEPSEEK_API_KEY', None) or __import__('os').getenv('DEEPSEEK_API_KEY')
+        # 初始化模型
+        import os
+        api_key = os.getenv('LLM_API_KEY')      # 通用 API Key
+        base_url = os.getenv('LLM_BASE_URL')    # 通用 API 地址
+        model_name = os.getenv('LLM_MODEL_NAME', 'deepseek-chat')  # 默认模型
         if api_key:
-            LangChainUtils.initialize_model(api_key, 'deepseek-chat')
-            logger.info("[V2] DeepSeek model initialized")
+            LangChainUtils.initialize_model(api_key=api_key, model_name=model_name, base_url=base_url)
+            logger.info("[V2] LLM model initialized")
         else:
-            logger.warning("[V2] DEEPSEEK_API_KEY not set — agents will use fallback mode")
+            logger.warning("[V2] LLM_API_KEY not set — agents will use fallback mode")
 
         _v2_coordinator = AgentCoordinator()
         _v2_coordinator.register_agent(ManagerAgent())
