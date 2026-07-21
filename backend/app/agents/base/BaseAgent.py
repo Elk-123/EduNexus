@@ -1,7 +1,7 @@
 """
 Agent基类抽象定义
 """
-import threading
+# [已注释] import threading — 未使用（interrupt/is_stopped 机制预留 Phase 2）
 from datetime import datetime
 from abc import ABC, abstractmethod
 from ..types import AgentConfig, AgentContext, AgentExecutionResult, AgentStatusInfo, AgentStatus
@@ -12,7 +12,8 @@ class BaseAgent(ABC):
 
     def __init__(self, config: AgentConfig):
         self.config = config
-        self.system_prompt = self._build_system_prompt()
+        # [已注释] self.system_prompt = self._build_system_prompt()
+        #   system_prompt 从未被读取（各 Agent 通过 LangChainUtils.create_prompt_template 设置自己的 prompt）
 
         # 内部状态追踪
         self._state = {
@@ -22,7 +23,8 @@ class BaseAgent(ABC):
             "last_updated": datetime.now(),
             "current_task": None,
         }
-        self._should_stop = threading.Event()
+        # [已注释] self._should_stop = threading.Event()
+        #   interrupt/is_stopped 机制预留 Phase 2 并行执行
 
     # ── 公共接口 ─────────────────────────────────────────────
 
@@ -30,9 +32,10 @@ class BaseAgent(ABC):
         """获取Agent配置"""
         return self.config
 
-    def get_system_prompt(self) -> str:
-        """获取系统提示词（供子类注入LLM调用）"""
-        return self.system_prompt
+    # [已注释] get_system_prompt — 从未被调用（各 Agent 通过 LangChainUtils 设置 prompt）
+    # def get_system_prompt(self) -> str:
+    #     """获取系统提示词（供子类注入LLM调用）"""
+    #     return self.system_prompt
 
     @abstractmethod
     def execute(self, context: AgentContext) -> AgentExecutionResult:
@@ -50,20 +53,22 @@ class BaseAgent(ABC):
             failure_count=self._state["failure_count"],
         )
 
-    def interrupt(self) -> None:
-        """中断执行 — 设置停止标志"""
-        self._should_stop.set()
+    # [已注释] interrupt/is_stopped — 预留 Phase 2 并行执行中断机制
+    # def interrupt(self) -> None:
+    #     """中断执行 — 设置停止标志"""
+    #     self._should_stop.set()
 
-    def is_stopped(self) -> bool:
-        """检查是否已被中断"""
-        return self._should_stop.is_set()
+    # def is_stopped(self) -> bool:
+    #     """检查是否已被中断"""
+    #     return self._should_stop.is_set()
 
     # ── 内部方法 ─────────────────────────────────────────────
 
-    def _update_state(self, **kwargs) -> None:
-        """更新内部状态"""
-        self._state.update(kwargs)
-        self._state["last_updated"] = datetime.now()
+    # [已注释] _update_state — 从未被调用（_record_success/failure 直接操作 _state）
+    # def _update_state(self, **kwargs) -> None:
+    #     """更新内部状态"""
+    #     self._state.update(kwargs)
+    #     self._state["last_updated"] = datetime.now()
 
     def _record_success(self, task: str = None) -> None:
         """记录一次成功执行"""
@@ -81,9 +86,10 @@ class BaseAgent(ABC):
         if task:
             self._state["current_task"] = task
 
-    def _build_system_prompt(self) -> str:
-        return (
-            f"You are a {self.config.role} agent. "
-            "ALWAYS output thought process in <thought> tags BEFORE any tool call or final answer.\n"
-            "Example: <thought>Need to search for academic papers on {topic}</thought>"
-        )
+    # [已注释] _build_system_prompt — 从未被使用（各 Agent 的 system prompt 由 LangChainUtils.create_prompt_template 提供）
+    # def _build_system_prompt(self) -> str:
+    #     return (
+    #         f"You are a {self.config.role} agent. "
+    #         "ALWAYS output thought process in <thought> tags BEFORE any tool call or final answer.\n"
+    #         "Example: <thought>Need to search for academic papers on {topic}</thought>"
+    #     )

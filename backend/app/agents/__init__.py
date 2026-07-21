@@ -20,9 +20,10 @@ from .implementations.HackerAgent import HackerAgent
 from .implementations.ReviewerAgent import ReviewerAgent
 
 # 工具集
-from .tools.academic_search import AcademicSearchTool, AcademicSearchResult
-from .tools.markdown_generator import MarkdownGeneratorTool
-from .tools.tool_registry import ToolRegistry
+# [已注释] AcademicSearchTool, AcademicSearchResult, ToolRegistry — 预留 Phase 1 Tool Use
+# from .tools.academic_search import AcademicSearchTool, AcademicSearchResult
+# from .tools.tool_registry import ToolRegistry
+from .tools.markdown_generator import MarkdownGeneratorTool  # ← 被 agent_orchestrator.py / factory.py 实际使用
 
 # 类型定义
 from .types import (
@@ -56,10 +57,10 @@ __all__ = [
     "ReviewerAgent",
 
     # 工具集
-    "AcademicSearchTool",
-    "AcademicSearchResult",
-    "MarkdownGeneratorTool",
-    "ToolRegistry",
+    "MarkdownGeneratorTool",  # 实际使用中
+    # "AcademicSearchTool",       # [已注释] 预留 Phase 1
+    # "AcademicSearchResult",     # [已注释] 预留 Phase 1
+    # "ToolRegistry",             # [已注释] 预留 Phase 1
 
     # 类型定义
     "AgentConfig",

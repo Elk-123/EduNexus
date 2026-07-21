@@ -1,12 +1,13 @@
 """
-LangChain集成工具类 - DeepSeek版本
+LangChain集成工具类 - Open AI版本
 
 需要安装 langchain-openai 和 langchain-core:
     pip install langchain-openai langchain-core
 """
+
 import json
 import re
-import threading
+# [已注释] import threading — 当前为同步顺序执行，线程锁不需要（预留 Phase 2 并行）
 import logging
 from typing import Dict, Any, Optional
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ load_dotenv()  # 读取 .env 文件内容并写入系统环境变量
 logger = logging.getLogger("edunexus.agents")
 
 _model = None
-_model_lock = threading.Lock()
+# [已注释] _model_lock = threading.Lock() — 顺序执行无需锁（预留 Phase 2 并行）
 
 # 延迟导入
 ChatOpenAI = None
@@ -42,27 +43,27 @@ def _ensure_langchain():
 
 
 class LangChainUtils:
-    """LangChain工具类 (DeepSeek API)"""
+    """LangChain工具类 (Open API)"""
 
     @classmethod
     def initialize_model(cls, api_key: str, model_name: str = "deepseek-chat", base_url: str = "https://api.deepseek.com") -> None:
-        """初始化DeepSeek LangChain模型（线程安全）
+        """初始化open ai LangChain模型（线程安全）
 
         Args:
-            api_key: DeepSeek API Key
+            api_key: DeepSeek API Key/openai API Key
             model_name: 模型名称，默认 deepseek-chat
                         可选: deepseek-chat, deepseek-reasoner
         """
         global _model
         _ensure_langchain()
-        with _model_lock:
-            _model = ChatOpenAI(
-                model=model_name,
-                api_key=api_key,
-                base_url=base_url,
-                temperature=0.7,
-            )
-            logger.info("LangChain model initialized: %s via %s", model_name, base_url)
+        # [已注释] with _model_lock: — 顺序执行无需锁
+        _model = ChatOpenAI(
+            model=model_name,
+            api_key=api_key,
+            base_url=base_url,
+            temperature=0.7,
+        )
+        logger.info("LangChain model initialized: %s via %s", model_name, base_url)
 
     @classmethod
     def _get_model(cls):
@@ -105,18 +106,19 @@ class LangChainUtils:
         logger.info("[LangChain] DeepSeek response (first 500 chars): %s", content[:500])
         return content
 
-    @classmethod
-    async def execute_chain_async(cls, prompt_template, inputs: Dict[str, Any]) -> str:
-        """执行链式调用 (异步)
-
-        Returns:
-            LLM 响应的文本内容
-        """
-        _ensure_langchain()
-        model = cls._get_model()
-        runnable = prompt_template | model
-        result = await runnable.ainvoke(inputs)
-        return str(result.content) if hasattr(result, 'content') else str(result)
+    # [已注释] execute_chain_async — 当前仅使用同步版本（预留 Phase 2 异步迁移）
+    # @classmethod
+    # async def execute_chain_async(cls, prompt_template, inputs: Dict[str, Any]) -> str:
+    #     """执行链式调用 (异步)
+    #
+    #     Returns:
+    #         LLM 响应的文本内容
+    #     """
+    #     _ensure_langchain()
+    #     model = cls._get_model()
+    #     runnable = prompt_template | model
+    #     result = await runnable.ainvoke(inputs)
+    #     return str(result.content) if hasattr(result, 'content') else str(result)
 
     @classmethod
     def try_parse_json(cls, text: str) -> Optional[Dict[str, Any]]:

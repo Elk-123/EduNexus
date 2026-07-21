@@ -27,7 +27,8 @@ from app.agents import (
     AgentCoordinator, LangChainUtils,
     ManagerAgent, ProfessorAgent, ArchitectAgent,
     ExaminerAgent, DirectorAgent, HackerAgent, ReviewerAgent,
-    MarkdownGeneratorTool, ToolRegistry,
+    MarkdownGeneratorTool,
+    # ToolRegistry,  # [已注释] 未使用 — 预留 Phase 1
 )
 
 router = APIRouter()

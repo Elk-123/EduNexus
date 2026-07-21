@@ -123,13 +123,14 @@ class AgentCoordinator:
             "task_id": task_id,
         }
 
-    def get_agent_status(self, agent_id: str) -> Optional[AgentStatusInfo]:
-        """获取Agent状态"""
-        return self.agent_states.get(agent_id)
+    # [已注释] get_agent_status / get_all_agent_statuses — 从未被外部调用（状态追踪由外部 orchestrator 自行管理）
+    # def get_agent_status(self, agent_id: str) -> Optional[AgentStatusInfo]:
+    #     """获取Agent状态"""
+    #     return self.agent_states.get(agent_id)
 
-    def get_all_agent_statuses(self) -> List[AgentStatusInfo]:
-        """获取所有Agent状态"""
-        return list(self.agent_states.values())
+    # def get_all_agent_statuses(self) -> List[AgentStatusInfo]:
+    #     """获取所有Agent状态"""
+    #     return list(self.agent_states.values())
 
     def _update_agent_status(self, agent_id: str, status: AgentStatus) -> None:
         """更新Agent状态"""
