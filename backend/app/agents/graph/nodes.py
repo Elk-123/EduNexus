@@ -1,14 +1,10 @@
 """
 LangGraph Agent 节点函数 — 使用工厂模式消除 7 个 Agent 的重复代码
 
-核心设计:
-  - _make_agent_node() 工厂函数封装通用执行逻辑:
-      构建 Prompt → 调用 LLM → 结构化输出/解析 JSON → 校验 → Fallback
-  - 每个 Agent 只需一行定义，7 个 Agent 从 ~120行/个 → ~3行/个
-  - 所有节点保持与 v2.0 相同的 Prompt 和输出格式，确保向后兼容
-
-v2.0 旧代码路径仍保留在各 implementations/ 中（标记 [v2.0 legacy]），
-本模块提供新的 LangGraph 执行路径，由 pipeline.py 调用。
+v2.2 优化:
+  - 优先使用 LangChain with_structured_output() + Pydantic Schema
+  - LLM 输出自动校验类型，失败时 LangChain 自动重试
+  - 降级路径: 结构化输出 → 传统 JSON 解析 → fallback mock 数据
 """
 import json
 import logging
@@ -17,12 +13,32 @@ from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
+from pydantic import BaseModel
 
 from ..types import AgentStatus
 from ..utils.LangChainUtils import LangChainUtils
 from ..prompts.templates import PROMPTS
 from ..fallback_data import get_fallback_content
 from .state import PipelineState
+
+# ── 结构化输出 Schema 映射 ──
+from ..schemas.manager import ManagerOutput
+from ..schemas.professor import ProfessorOutput
+from ..schemas.architect import ArchitectOutput
+from ..schemas.examiner import ExaminerOutput
+from ..schemas.director import DirectorOutput
+from ..schemas.hacker import HackerOutput
+from ..schemas.reviewer import ReviewerOutput
+
+SCHEMAS: dict[str, type[BaseModel]] = {
+    "manager":   ManagerOutput,
+    "professor": ProfessorOutput,
+    "architect": ArchitectOutput,
+    "examiner":  ExaminerOutput,
+    "director":  DirectorOutput,
+    "hacker":    HackerOutput,
+    "reviewer":  ReviewerOutput,
+}
 
 logger = logging.getLogger("edunexus.agents")
 
@@ -119,25 +135,39 @@ def _make_agent_node(agent_id: str, result_type: str):
             # 准备输入变量
             inputs = {"topic": topic}
             if agent_id == "reviewer":
-                # Reviewer 需要所有上游内容的完整 JSON
                 inputs["content"] = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
             else:
                 inputs["context"] = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
 
-            # ── 3. 调用 LLM ──
-            llm_response = LangChainUtils.execute_chain(prompt_template, inputs)
-            parsed = LangChainUtils.try_parse_json(llm_response)
+            # ── 3. 调用 LLM（v2.2: 结构化输出优先 → JSON 解析降级 → fallback）──
+            content = None
+            schema = SCHEMAS.get(agent_id)
 
-            # ── 4. 校验输出 ──
-            validator = validators.get(agent_id)
-            if parsed is not None and validator and validator(parsed):
-                # ── 5a. Agent 特有后处理 ──
-                content = _post_process(agent_id, parsed, topic, agent_outputs)
-            else:
-                logger.warning(
-                    "[Graph] %s: output validation failed, using fallback", agent_id
-                )
-                content = get_fallback_content(agent_id, topic)
+            # 3a. ★ 优先: with_structured_output (Pydantic 自动校验 + 失败重试)
+            if schema:
+                try:
+                    chain = LangChainUtils.create_structured_chain(prompt_template, schema)
+                    pydantic_result: BaseModel = chain.invoke(inputs)
+                    content = pydantic_result.model_dump()
+                    logger.info("[Graph] %s: structured output OK", agent_id)
+                except Exception as struct_err:
+                    logger.info(
+                        "[Graph] %s: structured output failed (%s), falling back to JSON parse",
+                        agent_id, type(struct_err).__name__
+                    )
+
+            # 3b. 降级: 传统 JSON 解析（当 structured output 不可用或失败时）
+            if content is None:
+                llm_response = LangChainUtils.execute_chain(prompt_template, inputs)
+                parsed = LangChainUtils.try_parse_json(llm_response)
+                validator = validators.get(agent_id)
+                if parsed is not None and validator and validator(parsed):
+                    content = _post_process(agent_id, parsed, topic, agent_outputs)
+                else:
+                    logger.warning(
+                        "[Graph] %s: JSON parse validation failed, using fallback", agent_id
+                    )
+                    content = get_fallback_content(agent_id, topic)
 
             # ── 6. 构建结果 ──
             duration = int((datetime.now() - start_time).total_seconds() * 1000)

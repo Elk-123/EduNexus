@@ -190,7 +190,7 @@ class LangChainUtils:
         )
 
     @classmethod
-    def create_structured_chain(cls, prompt_template, output_schema):
+    def create_structured_chain(cls, prompt_template, output_schema, method: str = "json_mode"):
         """[v2.1] 创建带结构化输出的 Chain。
 
         使用 LangChain 的 with_structured_output() 自动处理:
@@ -201,6 +201,9 @@ class LangChainUtils:
         Args:
             prompt_template: ChatPromptTemplate 实例
             output_schema: Pydantic v2 BaseModel 类（如 ProfessorOutput）
+            method: 结构化输出方式
+              - "json_mode": 使用 response_format={"type": "json_object"}（DeepSeek 兼容）
+              - "function_calling": 使用 tool calling（OpenAI 原生支持）
 
         Returns:
             Runnable: prompt_template | model.with_structured_output(output_schema)
@@ -209,13 +212,10 @@ class LangChainUtils:
             from ..schemas.professor import ProfessorOutput
             chain = LangChainUtils.create_structured_chain(prompt, ProfessorOutput)
             result: ProfessorOutput = chain.invoke({"topic": "..."})
-            # result.title, result.sections — 类型安全，无需手动解析！
         """
         _ensure_langchain()
         model = cls._get_model()
-        # [建议] 后续可以从环境变量配置 structured output 的校验严格程度
-        # model = model.with_structured_output(output_schema, method="json_mode")
-        return prompt_template | model.with_structured_output(output_schema)
+        return prompt_template | model.with_structured_output(output_schema, method=method)
 
     @classmethod
     def create_tool_agent_chain(cls, model, tools: list, system_prompt: str):
