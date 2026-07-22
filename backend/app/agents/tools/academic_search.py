@@ -1,5 +1,12 @@
 """
 学术检索工具 — 对接 ArXiv API 获取真实学术文献
+
+v2.1 更新: 新增 @tool 装饰器包装函数，可由 LangChain/LangGraph Agent 直接绑定调用。
+          原有 AcademicSearchTool 类保留不变，保证向后兼容。
+
+使用方式 (Agent 绑定工具):
+    from .tools.academic_search import academic_search_tool
+    agent = model.bind_tools([academic_search_tool])
 """
 import logging
 import xml.etree.ElementTree as ET
@@ -22,7 +29,7 @@ class AcademicSearchResult:
 
 
 class AcademicSearchTool:
-    """学术检索工具 — 通过 ArXiv API 搜索论文"""
+    """学术检索工具 — 通过 ArXiv API 搜索论文 (原 v2.0 实现，保持不变)"""
 
     BASE_URL = "http://export.arxiv.org/api/query"
 
@@ -121,3 +128,55 @@ class AcademicSearchTool:
     def close(self) -> None:
         """关闭 HTTP 客户端"""
         self._client.close()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  ★ NEW: LangChain @tool 装饰器包装
+#     Agent 可通过 model.bind_tools([academic_search_tool]) 直接调用
+#     LangChain 自动处理 Tool Call → 函数调用 → 结果注入的整个 ReAct 循环
+# ═══════════════════════════════════════════════════════════════
+
+# 延迟导入避免 langchain_core 未安装时报错
+_tool_available = False
+try:
+    from langchain_core.tools import tool as _tool_decorator
+    _tool_available = True
+except ImportError:
+    _tool_available = False
+
+
+def _create_academic_search_tool():
+    """创建 LangChain @tool 包装函数（延迟创建，复用现有 AcademicSearchTool 逻辑）"""
+    if not _tool_available:
+        return None
+
+    _search_tool_instance = AcademicSearchTool()
+
+    @_tool_decorator
+    def academic_search(query: str, max_results: int = 5) -> str:
+        """搜索 ArXiv 学术论文数据库。
+
+        当需要查找学术文献、研究论文、或验证某个技术概念的学术来源时使用此工具。
+        返回论文标题、作者、年份和摘要。
+
+        Args:
+            query: 搜索关键词（英文效果最佳），如 "transformer attention mechanism"
+            max_results: 返回结果数量，默认 5 篇
+        """
+        results = _search_tool_instance.search(query, max_results=max_results)
+        if not results:
+            return f"未找到与 '{query}' 相关的学术论文。"
+        lines = []
+        for i, r in enumerate(results, 1):
+            authors = ", ".join(r.authors[:3])
+            if len(r.authors) > 3:
+                authors += " et al."
+            year_str = f" ({r.year})" if r.year else ""
+            lines.append(f"{i}. **{r.title}**{year_str}\n   Authors: {authors}\n   URL: {r.url}\n   {r.snippet[:200]}...")
+        return "\n\n".join(lines)
+
+    return academic_search
+
+
+# 导出 @tool 版本 (如果 langchain_core 可用)
+academic_search_tool = _create_academic_search_tool()

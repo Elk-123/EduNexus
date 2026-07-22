@@ -153,3 +153,123 @@ class LangChainUtils:
                 pass
 
         return None
+
+    # ═══════════════════════════════════════════════════════════
+    #  ★ v2.1 NEW: ModelFactory 方法
+    #    提供结构化输出、工具绑定、流式事件等高级功能
+    #    旧方法 (create_prompt_template, execute_chain, try_parse_json) 保持不变
+    # ═══════════════════════════════════════════════════════════
+
+    @classmethod
+    def create_model_instance(cls, model_name: str = "deepseek-chat",
+                              api_key: str = None, base_url: str = "https://api.deepseek.com",
+                              temperature: float = 0.7):
+        """[v2.1] 创建独立的 ChatModel 实例（不依赖全局单例）。
+
+        与 initialize_model() 的区别:
+          - initialize_model(): 设置全局 _model，供旧代码使用
+          - create_model_instance(): 返回新实例，支持多模型并存
+
+        Args:
+            model_name: 模型名称
+            api_key: API Key（可选，默认从环境变量读取）
+            base_url: API 地址
+            temperature: 温度参数
+
+        Returns:
+            ChatOpenAI 实例
+        """
+        import os
+        _ensure_langchain()
+        key = api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY")
+        return ChatOpenAI(
+            model=model_name,
+            api_key=key,
+            base_url=base_url,
+            temperature=temperature,
+        )
+
+    @classmethod
+    def create_structured_chain(cls, prompt_template, output_schema):
+        """[v2.1] 创建带结构化输出的 Chain。
+
+        使用 LangChain 的 with_structured_output() 自动处理:
+          JSON Schema 注入 → LLM 输出 → JSON 解析 → Pydantic 校验 → 失败重试
+
+        替代 v2.0 的手动 try_parse_json() + 正则提取流程。
+
+        Args:
+            prompt_template: ChatPromptTemplate 实例
+            output_schema: Pydantic v2 BaseModel 类（如 ProfessorOutput）
+
+        Returns:
+            Runnable: prompt_template | model.with_structured_output(output_schema)
+
+        Usage:
+            from ..schemas.professor import ProfessorOutput
+            chain = LangChainUtils.create_structured_chain(prompt, ProfessorOutput)
+            result: ProfessorOutput = chain.invoke({"topic": "..."})
+            # result.title, result.sections — 类型安全，无需手动解析！
+        """
+        _ensure_langchain()
+        model = cls._get_model()
+        # [建议] 后续可以从环境变量配置 structured output 的校验严格程度
+        # model = model.with_structured_output(output_schema, method="json_mode")
+        return prompt_template | model.with_structured_output(output_schema)
+
+    @classmethod
+    def create_tool_agent_chain(cls, model, tools: list, system_prompt: str):
+        """[v2.1] 创建带工具绑定的 Agent Chain（用于 ReAct 循环）。
+
+        Agent 可以自动决策：何时调用工具、如何解释工具返回结果。
+
+        Args:
+            model: ChatModel 实例
+            tools: @tool 装饰的函数列表
+            system_prompt: 系统提示词
+
+        Returns:
+            Runnable chain
+
+        Usage:
+            from ..tools import academic_search_tool
+            llm = LangChainUtils.create_model_instance()
+            chain = LangChainUtils.create_tool_agent_chain(
+                llm, [academic_search_tool],
+                "你是一个学术研究助手，可以使用 academic_search 工具查找论文。"
+            )
+        """
+        _ensure_langchain()
+        from langchain_core.prompts import ChatPromptTemplate
+
+        llm_with_tools = model.bind_tools(tools)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),  # ReAct 中间步骤
+        ])
+        return prompt | llm_with_tools
+
+    @classmethod
+    async def stream_events(cls, chain, inputs: dict):
+        """[v2.1] 异步流式迭代 Chain 事件（用于 WebSocket 实时推送）。
+
+        使用 LangChain 的 astream_events() API (v2)，产生细粒度事件:
+          - on_llm_start / on_llm_end
+          - on_tool_start / on_tool_end
+          - on_chain_start / on_chain_end
+
+        Args:
+            chain: Runnable 实例
+            inputs: Chain 输入 dict
+
+        Yields:
+            dict: LangChain 事件对象
+
+        Usage:
+            async for event in LangChainUtils.stream_events(chain, {"topic": "..."}):
+                if event["event"] == "on_llm_end":
+                    content = event["data"]["output"].content
+        """
+        async for event in chain.astream_events(inputs, version="v2"):
+            yield event

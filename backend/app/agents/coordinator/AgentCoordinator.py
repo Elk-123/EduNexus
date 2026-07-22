@@ -123,7 +123,98 @@ class AgentCoordinator:
             "task_id": task_id,
         }
 
-    # [已注释] get_agent_status / get_all_agent_statuses — 从未被外部调用（状态追踪由外部 orchestrator 自行管理）
+    # ═══════════════════════════════════════════════════════════
+    #  ★ v2.1 NEW: LangGraph 执行方法
+    #    使用 graph/ 模块中的 StateGraph 替代手动顺序遍历
+    #    旧 execute_pipeline() 保持不变，保证向后兼容
+    # ═══════════════════════════════════════════════════════════
+
+    def execute_pipeline_graph(
+        self, topic: str, context: Optional[Dict[str, Any]] = None,
+        callbacks: Optional[list] = None,
+    ) -> Dict[str, Any]:
+        """[v2.1] 通过 LangGraph StateGraph 执行管道。
+
+        与 execute_pipeline() 的返回格式完全一致，可作为 drop-in 替换。
+        区别：内部使用 graph/pipeline.py 的 StateGraph 而非手动遍历。
+
+        Args:
+            topic: 生成主题
+            context: 初始上下文（可选）
+            callbacks: LangChain 回调列表（如 WSBroadcastCallback）
+
+        Returns:
+            {"results", "accumulated_context", "task_id"}
+        """
+        from ..graph.pipeline import get_pipeline, create_initial_state
+
+        # 创建初始状态
+        initial_state = create_initial_state(topic, context)
+
+        # 执行管道
+        pipeline = get_pipeline()
+        config = {"callbacks": callbacks} if callbacks else {}
+        final_state = pipeline.invoke(initial_state, config=config)
+
+        # 转换为 v2.0 兼容的返回格式
+        from ..types import AgentExecutionResult, AgentResult, AgentStatus
+
+        results = []
+        for r in final_state.get("results", []):
+            results.append(AgentExecutionResult(
+                agent_id=r["agent_id"],
+                status=AgentStatus(r["status"]),
+                result=AgentResult(
+                    content=r["result"]["content"],
+                    type=r["result"]["type"],
+                    timestamp=datetime.now(),
+                    log=r["result"].get("log", []),
+                ) if r.get("result") else None,
+                duration=r.get("duration", 0),
+            ))
+
+        logger.info(
+            "[Graph] Pipeline completed: %s, %d agents, %d errors",
+            final_state["task_id"],
+            len(results),
+            final_state.get("error_count", 0),
+        )
+
+        return {
+            "results": results,
+            "accumulated_context": final_state.get("agent_outputs", {}),
+            "task_id": final_state["task_id"],
+        }
+
+    async def execute_pipeline_graph_async(
+        self, topic: str, context: Optional[Dict[str, Any]] = None,
+        callbacks: Optional[list] = None,
+    ):
+        """[v2.1] 异步流式执行管道 — 返回事件流（用于 WebSocket 实时推送）。
+
+        与 execute_pipeline_graph() 不同的是，此方法通过 astream_events()
+        产出细粒度事件，前端可以实时看到每个 Agent 的执行进度。
+
+        Yields:
+            dict: LangChain 事件对象
+
+        Usage:
+            async for event in coordinator.execute_pipeline_graph_async(
+                topic, callbacks=[WSBroadcastCallback(...)]
+            ):
+                # event 是 LangChain astream_events v2 格式
+                print(event["event"], event["name"])
+        """
+        from ..graph.pipeline import get_pipeline, create_initial_state
+
+        initial_state = create_initial_state(topic, context)
+        pipeline = get_pipeline()
+        config = {"callbacks": callbacks} if callbacks else {}
+
+        async for event in pipeline.astream_events(initial_state, config=config, version="v2"):
+            yield event
+
+    # ── 私有方法 ─────────────────────────────────────────────
     # def get_agent_status(self, agent_id: str) -> Optional[AgentStatusInfo]:
     #     """获取Agent状态"""
     #     return self.agent_states.get(agent_id)
