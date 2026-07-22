@@ -87,14 +87,25 @@ def _make_agent_node(agent_id: str, result_type: str):
         ),
     }
 
-    async def agent_node(state: PipelineState) -> dict:
+    def agent_node(state: PipelineState) -> dict:
         """
         LangGraph Node 函数 — 执行单个 Agent 的 LLM 调用并返回状态更新。
+
+        注意: 当前为同步函数（内部调用 LangChainUtils 同步方法）。
+        切换到 execute_chain_async 后改回 async def。
         """
         topic = state["topic"]
         agent_outputs = state.get("agent_outputs", {})
         errors = state.get("error_count", 0)
         start_time = datetime.now()
+        callback = state.get("_agent_event")  # WS 广播回调（由 execute_pipeline_graph 注入）
+
+        # ── 广播: Agent 开始 ──
+        if callback:
+            try:
+                callback(agent_id, "start", None)
+            except Exception as cb_err:
+                logger.debug("Agent event callback (start) failed: %s", cb_err)
 
         try:
             # ── 1. 获取 Prompt ──
@@ -148,6 +159,13 @@ def _make_agent_node(agent_id: str, result_type: str):
                 "[Graph] %s completed in %dms", agent_id, duration
             )
 
+            # ── 广播: Agent 完成（成功路径）──
+            if callback:
+                try:
+                    callback(agent_id, "done", {"duration": duration, "status": "success"})
+                except Exception as cb_err:
+                    logger.debug("Agent event callback (done) failed: %s", cb_err)
+
             # ── 7. 返回部分 state 更新 ──
             return {
                 "agent_outputs": new_outputs,
@@ -175,6 +193,13 @@ def _make_agent_node(agent_id: str, result_type: str):
                 },
                 "duration": duration,
             }
+
+            # ── 广播: Agent 完成（异常降级路径）──
+            if callback:
+                try:
+                    callback(agent_id, "done", {"duration": duration, "status": "fallback", "error": str(error)})
+                except Exception as cb_err:
+                    logger.debug("Agent event callback (done/fallback) failed: %s", cb_err)
 
             return {
                 "agent_outputs": new_outputs,

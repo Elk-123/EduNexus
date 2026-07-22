@@ -132,16 +132,18 @@ class AgentCoordinator:
     def execute_pipeline_graph(
         self, topic: str, context: Optional[Dict[str, Any]] = None,
         callbacks: Optional[list] = None,
+        agent_callback: Optional[callable] = None,
     ) -> Dict[str, Any]:
         """[v2.1] 通过 LangGraph StateGraph 执行管道。
 
         与 execute_pipeline() 的返回格式完全一致，可作为 drop-in 替换。
-        区别：内部使用 graph/pipeline.py 的 StateGraph 而非手动遍历。
 
         Args:
             topic: 生成主题
             context: 初始上下文（可选）
-            callbacks: LangChain 回调列表（如 WSBroadcastCallback）
+            callbacks: LangChain 回调列表（用于 LLM/Tool 级回调）
+            agent_callback: Agent 级回调 (agent_id, event_type, data) -> None
+                           由 WSBroadcastCallback.create_agent_callback() 创建
 
         Returns:
             {"results", "accumulated_context", "task_id"}
@@ -150,6 +152,10 @@ class AgentCoordinator:
 
         # 创建初始状态
         initial_state = create_initial_state(topic, context)
+
+        # 注入 Agent 事件回调（供 graph nodes 在执行前后调用）
+        if agent_callback:
+            initial_state["_agent_event"] = agent_callback
 
         # 执行管道
         pipeline = get_pipeline()

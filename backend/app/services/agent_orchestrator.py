@@ -51,7 +51,9 @@ class AgentOrchestrator:
         if api_key:
             LangChainUtils.initialize_model(api_key, 'deepseek-chat')
 
-        # 创建协调器
+        # ── v2.1: LangGraph 管道 ──
+        from app.agents.hooks import WSBroadcastCallback
+
         coord = AgentCoordinator()
         coord.register_agent(ManagerAgent())
         coord.register_agent(ProfessorAgent())
@@ -61,61 +63,18 @@ class AgentOrchestrator:
         coord.register_agent(HackerAgent())
         coord.register_agent(ReviewerAgent())
 
-        # 捕获主线程 event loop（线程池中 get_event_loop() 会失败）
         main_loop = asyncio.get_running_loop()
 
-        # 广播包装
-        agent_names = {
-            "manager": "Manager", "professor": "Professor", "architect": "Architect",
-            "examiner": "Examiner", "director": "Director", "hacker": "Hacker",
-            "reviewer": "Reviewer",
-        }
-        original_execute = {}
-        for aid, agent in coord.agents.items():
-            original_execute[aid] = agent.execute
-
-            def make_wrapper(aid, orig_fn, loop):
-                def wrapper(context):
-                    name = agent_names.get(aid, aid)
-                    # running
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast(task_id, {
-                            "type": "agent_status", "agent": name, "status": "running",
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }), loop
-                    )
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast(task_id, {
-                            "type": "agent_log", "agent": name,
-                            "message": f"开始执行 {name}...", "type": "info",
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }), loop
-                    )
-                    result = orig_fn(context)
-                    status = "success" if result.status.value == "success" else "error"
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast(task_id, {
-                            "type": "agent_status", "agent": name, "status": status,
-                            "timestamp": datetime.utcnow().isoformat(),
-                        }), loop
-                    )
-                    asyncio.run_coroutine_threadsafe(
-                        ws_manager.broadcast(task_id, {
-                            "type": "agent_log", "agent": name,
-                            "message": "完成 ✓" if status == "success" else f"失败: {result.error}",
-                            "type": status, "timestamp": datetime.utcnow().isoformat(),
-                        }), loop
-                    )
-                    return result
-                return wrapper
-            agent.execute = make_wrapper(aid, original_execute[aid], main_loop)
-
-        # 在线程池中执行同步管道
-        result = await main_loop.run_in_executor(None, coord.execute_pipeline, topic)
-
-        # 恢复原始 execute
-        for aid, agent in coord.agents.items():
-            agent.execute = original_execute[aid]
+        # 在线程池中执行 LangGraph 管道
+        # WS 广播通过 agent_callback 注入 state，由 graph nodes 在执行前后自动调用
+        result = await main_loop.run_in_executor(
+            None,
+            coord.execute_pipeline_graph,
+            topic,
+            None,  # context
+            None,  # LangChain callbacks (not needed for WS)
+            WSBroadcastCallback.create_agent_callback(task_id, main_loop),  # agent_callback
+        )
 
         # 保存资源到数据库
         for r in result["results"]:

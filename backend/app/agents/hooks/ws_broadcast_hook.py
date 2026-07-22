@@ -73,6 +73,9 @@ class WSBroadcastCallback(BaseCallbackHandler):
             "hacker": "Hacker",
             "reviewer": "Reviewer",
         }
+        # 用 run_id 追踪当前正在执行的 Agent（线程安全）
+        # key = run_id, value = agent_display_name
+        self._run_agent_map: Dict[str, str] = {}
 
     def _broadcast(self, data: dict) -> None:
         """线程安全地广播消息到 WebSocket"""
@@ -117,13 +120,15 @@ class WSBroadcastCallback(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         """Agent Node 开始执行"""
+        if serialized is None:
+            return  # LangGraph 内部 chain，无序列化信息，跳过
         chain_name = serialized.get("name", serialized.get("id", ""))
         # 只处理 Agent Node（过滤掉内部的 LLM chain）
         agent_display = self.agent_names.get(chain_name, "")
         if agent_display:
+            self._run_agent_map[run_id] = agent_display  # 记录映射
             self._broadcast_agent_status(agent_display, "running")
             self._broadcast_agent_log(agent_display, f"开始执行 {agent_display}...", "info")
-            logger.debug("[WS Hook] Agent started: %s", agent_display)
 
     def on_chain_end(
         self,
@@ -133,14 +138,11 @@ class WSBroadcastCallback(BaseCallbackHandler):
         parent_run_id: Optional[str] = None,
         **kwargs: Any,
     ) -> None:
-        """Agent Node 执行完成"""
-        # outputs 包含 PipelineState 的部分更新
-        current_agent = outputs.get("current_agent", "")
-        agent_display = self.agent_names.get(current_agent, "")
+        """Agent Node 执行完成 — 通过 run_id 找回 Agent 名称"""
+        agent_display = self._run_agent_map.pop(run_id, "")
         if agent_display:
             self._broadcast_agent_status(agent_display, "success")
             self._broadcast_agent_log(agent_display, "完成 ✓", "success")
-            logger.debug("[WS Hook] Agent completed: %s", agent_display)
 
     def on_chain_error(
         self,
@@ -173,3 +175,47 @@ class WSBroadcastCallback(BaseCallbackHandler):
     def on_tool_end(self, output, *, run_id, parent_run_id=None, **kwargs):
         """Tool 执行完成"""
         pass
+
+    # ═══════════════════════════════════════════════════════════
+    #  工厂方法: 创建 state-based Agent 事件回调
+    #  用于 graph/nodes.py 的 _agent_event 机制
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def create_agent_callback(task_id: str, loop, agent_names: Optional[Dict[str, str]] = None):
+        """
+        创建适配 graph/nodes.py 的 Agent 事件回调函数。
+
+        签名: callback(agent_id, event_type, data) -> None
+
+        用于 graph pipeline 的 _agent_event 字段。
+        不需要依赖 LangChain 的 on_chain_start/on_chain_end 回调机制。
+
+        Args:
+            task_id: WebSocket 任务 ID
+            loop: 主线程 event loop（用于 run_coroutine_threadsafe）
+            agent_names: agent_id → 显示名称映射
+
+        Returns:
+            callable: (agent_id, event_type, data) -> None
+        """
+        hook = WSBroadcastCallback(task_id, loop, agent_names)
+
+        def agent_callback(agent_id: str, event_type: str, data: dict = None):
+            display_name = hook.agent_names.get(agent_id, agent_id)
+            if event_type == "start":
+                hook._broadcast_agent_status(display_name, "running")
+                hook._broadcast_agent_log(display_name, f"开始执行 {display_name}...", "info")
+            elif event_type == "done":
+                if data and data.get("status") == "fallback":
+                    hook._broadcast_agent_status(display_name, "success")
+                    hook._broadcast_agent_log(
+                        display_name,
+                        f"完成 (降级): {data.get('error', 'unknown')}",
+                        "warn",
+                    )
+                else:
+                    hook._broadcast_agent_status(display_name, "success")
+                    hook._broadcast_agent_log(display_name, "完成 ✓", "success")
+
+        return agent_callback

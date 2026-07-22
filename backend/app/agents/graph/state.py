@@ -7,7 +7,7 @@ LangGraph 的状态管理机制:
   - Annotated[list, add_messages] 自动追加消息而非覆盖
   - 不需要像 v2.0 那样手动传递 accumulated_context dict
 """
-from typing import TypedDict, Annotated, Optional
+from typing import TypedDict, Annotated, Optional, Any, Callable
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
 
@@ -39,3 +39,7 @@ class PipelineState(TypedDict):
 
     # ── 元数据 ──
     # [建议] 添加 started_at, completed_at 时间戳用于性能监控
+
+    # ── 内部回调（由 execute_pipeline_graph 注入）──
+    # Agent node 在执行前后调用: callback(agent_id, event_type, data)
+    _agent_event: Optional[Callable[[str, str, Optional[dict]], None]]
