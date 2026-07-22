@@ -1,17 +1,9 @@
 """
-代码执行工具 — Python 安全沙箱
+代码执行工具 — v2.3: LangChain 标准 StructuredTool 包装
+沙箱: subprocess 隔离 + AST 安全检查 + 超时控制
 
-让 HackerAgent 可以在生成代码后自动验证其正确性。
-Agent 写出代码 → 工具执行 → 返回输出 → Agent 根据输出修正错误。
-
-安全措施:
-  - subprocess 隔离（独立进程）
-  - 超时限制（默认 30 秒）
-  - 禁用危险模块（os, sys, subprocess, shutil 等通过 AST 检测）
-
-使用方式:
-    from .tools.code_executor import code_executor_tool
-    agent = model.bind_tools([code_executor_tool])
+注意: langchain_experimental 中的 PythonREPLTool 未安装，保留自实现。
+      当 langchain_experimental 可用后切换: from langchain_experimental.tools import PythonREPLTool
 """
 import ast
 import logging
@@ -22,118 +14,98 @@ from typing import Optional
 
 logger = logging.getLogger("edunexus.agents")
 
-# 延迟导入
-_tool_available = False
-try:
-    from langchain_core.tools import tool as _tool_decorator
-    _tool_available = True
-except ImportError:
-    _tool_available = False
-
-# 危险模块黑名单
 DANGEROUS_IMPORTS = {
     "os", "sys", "subprocess", "shutil", "socket", "requests",
     "urllib", "http", "ftplib", "telnetlib", "smtplib",
     "pathlib", "glob", "fnmatch", "importlib",
 }
 
+_tool_instance = None
+
 
 def _validate_code_safety(code: str) -> Optional[str]:
-    """
-    AST 静态分析：检测代码中的危险导入和调用。
-
-    Returns:
-        None 表示安全，str 表示发现的危险操作描述
-    """
+    """AST 静态分析：检测危险导入和调用。返回 None 表示安全。"""
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
-        return f"语法错误: {e}"
-
+        return f"Syntax error: {e}"
     for node in ast.walk(tree):
-        # 检测危险 import
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.name.split(".")[0] in DANGEROUS_IMPORTS:
-                    return f"禁止导入危险模块: {alias.name}"
+                    return f"禁止导入: {alias.name}"
         elif isinstance(node, ast.ImportFrom):
             if node.module and node.module.split(".")[0] in DANGEROUS_IMPORTS:
-                return f"禁止从危险模块导入: {node.module}"
-
-        # 检测危险函数调用
+                return f"禁止导入: {node.module}"
         elif isinstance(node, ast.Call):
             if isinstance(node.func, ast.Name):
                 if node.func.id in {"eval", "exec", "compile", "__import__", "open"}:
-                    return f"禁止调用危险函数: {node.func.id}()"
+                    return f"禁止调用: {node.func.id}()"
+    return None
 
-    return None  # 安全
 
+def get_code_executor():
+    """获取 code_executor 工具实例（LangChain StructuredTool）"""
+    global _tool_instance
+    if _tool_instance is not None:
+        return _tool_instance
 
-def _create_code_executor_tool():
-    """创建代码执行 @tool"""
-    if not _tool_available:
-        return None
+    from langchain_core.tools import tool as _tool_dec
 
-    @_tool_decorator
+    @_tool_dec
     def execute_python(code: str, timeout: int = 30) -> str:
-        """在安全沙箱中执行 Python 代码并返回标准输出。
+        """Execute Python code in a sandbox and return stdout/stderr.
 
-        用于验证代码示例的正确性和获取实际运行结果。
-        支持 import 常用科学计算/数据处理库（numpy, pandas, torch, matplotlib 等）。
+        Use this to verify Python code examples work correctly.
+        Supports standard libraries and common scientific packages (numpy, pandas, matplotlib).
+        Do NOT use for system-level operations — those are blocked.
 
         Args:
-            code: 完整的 Python 代码（含 import 语句）
-            timeout: 执行超时时间（秒），默认 30
-
-        Returns:
-            标准输出内容，或错误信息
+            code: Complete Python source code with imports
+            timeout: Max execution time in seconds (default 30)
         """
-        # 1. 静态安全检查
         safety_issue = _validate_code_safety(code)
         if safety_issue:
-            return f"⛔ 安全检查未通过: {safety_issue}"
+            return f"⛔ Safety check failed: {safety_issue}"
 
-        # 2. 写入临时文件执行
+        temp_path = None
         try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".py", delete=False, encoding="utf-8"
-            ) as f:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf-8") as f:
                 f.write(code)
                 temp_path = f.name
 
-            # 3. 子进程隔离执行
             result = subprocess.run(
                 ["python", temp_path],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
+                capture_output=True, text=True, timeout=timeout,
                 cwd=tempfile.gettempdir(),
-                env={
-                    **os.environ,
-                    "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
-                },
+                env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "")},
             )
-
             output = result.stdout
             if result.stderr:
-                output += f"\n\n[stderr]:\n{result.stderr[:1000]}"
+                output += f"\n[stderr]:\n{result.stderr[:1000]}"
             if result.returncode != 0:
-                output += f"\n\n[exit code]: {result.returncode}"
-
-            return output.strip() if output.strip() else "(无输出)"
+                output += f"\n[exit code]: {result.returncode}"
+            return output.strip() or "(no output)"
 
         except subprocess.TimeoutExpired:
-            return f"⏱ 代码执行超时 ({timeout}秒)"
+            return f"⏱ Timeout after {timeout}s"
         except Exception as e:
-            return f"❌ 执行错误: {type(e).__name__}: {e}"
+            return f"❌ Execution error: {type(e).__name__}: {e}"
         finally:
-            # 清理临时文件
-            try:
-                os.unlink(temp_path)
-            except (OSError, UnboundLocalError):
-                pass
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
 
-    return execute_python
+    _tool_instance = execute_python
+    return _tool_instance
 
 
-code_executor_tool = _create_code_executor_tool()
+# 模块导入时直接初始化
+code_executor_tool = get_code_executor()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  [v2.2 legacy] 旧 code_executor.py — 见 git history: ea8a7c4
+# ═══════════════════════════════════════════════════════════════

@@ -203,19 +203,51 @@ class WSBroadcastCallback(BaseCallbackHandler):
 
         def agent_callback(agent_id: str, event_type: str, data: dict = None):
             display_name = hook.agent_names.get(agent_id, agent_id)
+            data = data or {}
+
             if event_type == "start":
                 hook._broadcast_agent_status(display_name, "running")
                 hook._broadcast_agent_log(display_name, f"开始执行 {display_name}...", "info")
+
             elif event_type == "done":
-                if data and data.get("status") == "fallback":
+                if data.get("status") == "fallback":
                     hook._broadcast_agent_status(display_name, "success")
-                    hook._broadcast_agent_log(
-                        display_name,
-                        f"完成 (降级): {data.get('error', 'unknown')}",
-                        "warn",
-                    )
+                    hook._broadcast_agent_log(display_name, f"完成 (降级): {data.get('error', 'unknown')}", "warn")
                 else:
                     hook._broadcast_agent_status(display_name, "success")
                     hook._broadcast_agent_log(display_name, "完成 ✓", "success")
+
+            # ── v2.3: Tool 事件 ──
+            elif event_type == "tool_start":
+                hook._broadcast({
+                    "type": "tool_call",
+                    "agent": display_name,
+                    "tool": data.get("tool", "unknown"),
+                    "input": data.get("input", ""),
+                    "status": "running",
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+
+            elif event_type == "tool_end":
+                hook._broadcast({
+                    "type": "tool_call",
+                    "agent": display_name,
+                    "tool": data.get("tool", "unknown"),
+                    "output": data.get("output", ""),
+                    "duration_ms": data.get("duration_ms", 0),
+                    "status": "success",
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
+
+            elif event_type == "tool_error":
+                hook._broadcast({
+                    "type": "tool_call",
+                    "agent": display_name,
+                    "tool": data.get("tool", "unknown"),
+                    "error": data.get("error", "unknown"),
+                    "duration_ms": data.get("duration_ms", 0),
+                    "status": "error",
+                    "timestamp": datetime.utcnow().isoformat(),
+                })
 
         return agent_callback

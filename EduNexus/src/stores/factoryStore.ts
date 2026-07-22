@@ -20,7 +20,15 @@ export interface LogEntry {
   id: number
   agent: string
   message: string
-  type: 'info' | 'success' | 'warn'
+  type: 'info' | 'success' | 'warn' | 'tool'
+  /** tool call 详情（type === 'tool' 时） */
+  tool?: {
+    name: string
+    input?: string
+    output?: string
+    duration_ms?: number
+    status?: 'running' | 'success' | 'error'
+  }
 }
 
 /** v1.0 agent_type → resource_type 映射 */
@@ -50,7 +58,7 @@ export const useFactoryStore = defineStore('factory', () => {
   let ws: EduNexusWebSocket | null = null
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
-  function addLog(agent: string, message: string, type: 'info' | 'success' | 'warn' = 'info') {
+  function addLog(agent: string, message: string, type: 'info' | 'success' | 'warn' | 'tool' = 'info') {
     logs.value.push({ id: ++logCounter, agent, message, type })
   }
 
@@ -97,6 +105,26 @@ export const useFactoryStore = defineStore('factory', () => {
       ws.on('agent_log', (data: any) => {
         addLog(data.agent, data.message, data.type || 'info')
       })
+      ws.on('tool_call', (data: any) => {
+        // ★ v2.3: 工具调用事件 — Claude Code 风格展示，完整输出
+        const toolName = data.tool || 'unknown'
+        const agent = data.agent || 'System'
+        if (data.status === 'running') {
+          const input = (data.input || '').slice(0, 100)
+          const dots = (data.input || '').length > 100 ? '...' : ''
+          addLog(agent, `🔧 调用工具: ${toolName}("${input}${dots}")`, 'tool')
+        } else if (data.status === 'success') {
+          const ms = data.duration_ms ? ` (${data.duration_ms}ms)` : ''
+          // 完整输出，按换行拆分多条日志
+          const fullOutput = data.output || ''
+          const lines = fullOutput.split('\n')
+          lines.forEach((line: string, i: number) => {
+            addLog(agent, i === 0 ? `  → ${line}${ms}` : `    ${line}`, 'info')
+          })
+        } else if (data.status === 'error') {
+          addLog(agent, `  ⚠ 工具调用失败: ${data.error || '未知错误'}`, 'warn')
+        }
+      })
       ws.on('task_complete', () => {
         isGenerating.value = false
         stopPolling()
@@ -115,7 +143,7 @@ export const useFactoryStore = defineStore('factory', () => {
             id: `${agentId}-${Date.now()}` as any,
             task_id: (currentTaskId.value || '') as any,
             agent_type: agentId,
-            resource_type: AGENT_RESOURCE_MAP[agentId] || 'document',
+            resource_type: (AGENT_RESOURCE_MAP[agentId] || 'document') as any,
             content: content as Record<string, any>,
             status: 'completed',
           })

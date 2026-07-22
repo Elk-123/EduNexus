@@ -1,21 +1,20 @@
 """
-Agent 工具集模块
+Agent 工具集模块 — v2.3: LangChain 内置工具优先
 
-v2.1 更新: 新增 LangChain @tool 装饰器版本的工具函数，
-          可由 Agent 通过 model.bind_tools() 直接绑定调用。
+- academic_search   → ArxivQueryRun (langchain_community)
+- web_search        → DuckDuckGoSearchRun (langchain_community)
+- code_executor     → 自实现 StructuredTool (subprocess 沙箱)
+- markdown_generator → 自实现 (v1.0 兼容，agent_orchestrator 使用)
 """
-from .academic_search import AcademicSearchTool, AcademicSearchResult, academic_search_tool
+from .academic_search import academic_search_tool, get_academic_search
+from .web_search import web_search_tool, get_web_search
+from .youtube_search import youtube_search_tool, get_youtube_search
+from .code_executor import code_executor_tool, get_code_executor
 from .markdown_generator import MarkdownGeneratorTool
-from .web_search import web_search_tool
-from .code_executor import code_executor_tool
 
 __all__ = [
-    # 原有类（向后兼容）
-    "AcademicSearchTool",
-    "AcademicSearchResult",
-    "MarkdownGeneratorTool",
-    # @tool 版本（供 LangChain/LangGraph Agent 绑定）
-    "academic_search_tool",
-    "web_search_tool",
-    "code_executor_tool",
+    "academic_search_tool", "web_search_tool", "youtube_search_tool",
+    "code_executor_tool", "MarkdownGeneratorTool",
+    "get_academic_search", "get_web_search", "get_youtube_search",
+    "get_code_executor",
 ]

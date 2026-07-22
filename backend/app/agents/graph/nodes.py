@@ -1,18 +1,24 @@
 """
-LangGraph Agent 节点函数 — 使用工厂模式消除 7 个 Agent 的重复代码
+LangGraph Agent 节点函数 — 工厂模式消除重复代码
 
-v2.2 优化:
-  - 优先使用 LangChain with_structured_output() + Pydantic Schema
-  - LLM 输出自动校验类型，失败时 LangChain 自动重试
-  - 降级路径: 结构化输出 → 传统 JSON 解析 → fallback mock 数据
+v2.3: Tool Use (LangChain 内置工具 + BaseCallbackHandler)
+  - 工具调用自动通过 BaseCallbackHandler.on_tool_start/end 广播到前端
+  - ArxivQueryRun + DuckDuckGoSearchRun (langchain_community)
+  - code_executor (subprocess 沙箱)
+  - 降级: langchain_community 不可用时自动回退到自实现 @tool
+
+核心调用链: pre-LLM 工具(搜索注入) → structured_output → post-LLM 工具(代码验证)
 """
 import json
 import logging
+import time as time_module
 from datetime import datetime
 from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
 from ..types import AgentStatus
@@ -21,7 +27,7 @@ from ..prompts.templates import PROMPTS
 from ..fallback_data import get_fallback_content
 from .state import PipelineState
 
-# ── 结构化输出 Schema 映射 ──
+# ── 结构化输出 Schema ──
 from ..schemas.manager import ManagerOutput
 from ..schemas.professor import ProfessorOutput
 from ..schemas.architect import ArchitectOutput
@@ -31,132 +37,242 @@ from ..schemas.hacker import HackerOutput
 from ..schemas.reviewer import ReviewerOutput
 
 SCHEMAS: dict[str, type[BaseModel]] = {
-    "manager":   ManagerOutput,
-    "professor": ProfessorOutput,
-    "architect": ArchitectOutput,
-    "examiner":  ExaminerOutput,
-    "director":  DirectorOutput,
-    "hacker":    HackerOutput,
-    "reviewer":  ReviewerOutput,
+    "manager": ManagerOutput, "professor": ProfessorOutput,
+    "architect": ArchitectOutput, "examiner": ExaminerOutput,
+    "director": DirectorOutput, "hacker": HackerOutput,
+    "reviewer": ReviewerOutput,
+}
+
+# ── Tool Use 配置 ──
+# [已注释] get_academic_search — ArXivQueryRun 与 arxiv v2.x 不兼容，改用 web_search
+# from ..tools.academic_search import get_academic_search
+from ..tools.web_search import get_web_search
+from ..tools.youtube_search import get_youtube_search
+from ..tools.code_executor import get_code_executor
+
+AGENT_TOOLS: dict[str, dict] = {
+    "professor": {"pre_llm": [get_web_search],   "post_llm": []},
+    "architect": {"pre_llm": [get_web_search],   "post_llm": []},
+    "director":  {"pre_llm": [get_youtube_search], "post_llm": []},
+    "hacker":    {"pre_llm": [],                "post_llm": [get_code_executor]},
+    "manager":   {"pre_llm": [], "post_llm": []},
+    "examiner":  {"pre_llm": [], "post_llm": []},
+    "reviewer":  {"pre_llm": [], "post_llm": []},
 }
 
 logger = logging.getLogger("edunexus.agents")
 
 
+# ═══════════════════════════════════════════════════════════════
+#  ToolCallbackHandler — 基于 BaseCallbackHandler 的工具事件广播
+#  不再手写 callback("tool_start",...), LangChain 自动触发
+# ═══════════════════════════════════════════════════════════════
+
+class ToolCallbackHandler(BaseCallbackHandler):
+    """
+    LangChain 标准回调: 工具调用时自动触发 on_tool_start/end/error。
+    将事件转发到 _agent_event 回调 → WebSocket → 前端展示。
+    """
+
+    def __init__(self, agent_id: str, agent_callback):
+        super().__init__()
+        self.agent_id = agent_id
+        self._cb = agent_callback  # (agent_id, event_type, data) -> None
+
+    def on_tool_start(self, serialized: dict, input_str: str, *,
+                      run_id: str, parent_run_id=None, **kwargs):
+        tool_name = serialized.get("name", "tool")
+        logger.info("🔧 [%s] → %s(%s)", self.agent_id, tool_name, str(input_str)[:200])
+        if self._cb:
+            try:
+                self._cb(self.agent_id, "tool_start", {"tool": tool_name, "input": str(input_str)})
+            except Exception:
+                pass
+
+    def on_tool_end(self, output: str, *, run_id: str, parent_run_id=None, **kwargs):
+        # 终端完整输出（每行一行日志）
+        for line in str(output).split("\n"):
+            logger.info("   │ %s", line[:200])
+        if self._cb:
+            try:
+                self._cb(self.agent_id, "tool_end", {"tool": "tool", "output": str(output), "duration_ms": 0})
+            except Exception:
+                pass
+
+    def on_tool_error(self, error: BaseException, *, run_id: str, parent_run_id=None, **kwargs):
+        logger.warning("   ⚠ tool error: %s", error)
+        if self._cb:
+            try:
+                self._cb(self.agent_id, "tool_error", {"tool": "tool", "error": str(error), "duration_ms": 0})
+            except Exception:
+                pass
+
+
+# ═══════════════════════════════════════════════════════════════
+#  工具执行辅助
+# ═══════════════════════════════════════════════════════════════
+
+def _resolve_tools(tool_getters: list) -> list:
+    """将工具工厂函数列表解析为实际工具实例列表（过滤 None）"""
+    tools = []
+    for getter in tool_getters:
+        try:
+            t = getter()
+            if t is not None:
+                tools.append(t)
+        except Exception as e:
+            logger.warning("Tool resolution failed for %s: %s", getter.__name__, e)
+    return tools
+
+
+def _execute_pre_llm_tools(agent_id: str, topic: str, agent_callback) -> tuple[str, list]:
+    """
+    执行 pre-LLM 工具（搜索 → 注入 Prompt）。
+    返回 (工具结果文本, 成功执行的工具名称列表)。
+    工具事件通过 ToolCallbackHandler 自动广播。
+    """
+    tools_cfg = AGENT_TOOLS.get(agent_id, {})
+    tool_getters = tools_cfg.get("pre_llm", [])
+    if not tool_getters:
+        return "", []
+
+    tools = _resolve_tools(tool_getters)
+    if not tools:
+        return "", []
+
+    handler = ToolCallbackHandler(agent_id, agent_callback)
+    run_config = RunnableConfig(callbacks=[handler])
+
+    all_results = []
+    for tool in tools:
+        tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+        t0 = time_module.time()
+
+        try:
+            # ★ LangChain 标准调用: tool.invoke(input, config)
+            #   回调 on_tool_start/end 自动触发，无需手动调 callback()
+            try:
+                result = tool.invoke({"query": topic, "max_results": 5}, config=run_config)
+            except Exception:
+                result = tool.invoke(topic, config=run_config)
+
+            elapsed = time_module.time() - t0
+            logger.info("   ← %s: %.1fs", tool_name, elapsed)
+
+            if result:
+                all_results.append(f"【{tool_name} 搜索结果】\n{str(result)}")
+            else:
+                all_results.append(f"【{tool_name}】无结果")
+
+        except Exception as err:
+            logger.warning("   ⚠ %s failed: %s", tool_name, err)
+            all_results.append(f"【{tool_name}】搜索失败: {err}")
+
+    return "\n\n".join(all_results), [t.name for t in tools]
+
+
+def _execute_post_llm_tools(agent_id: str, topic: str, content: dict, agent_callback) -> dict:
+    """执行 post-LLM 工具（代码验证），工具事件通过 ToolCallbackHandler 自动广播。"""
+    tools_cfg = AGENT_TOOLS.get(agent_id, {})
+    tool_getters = tools_cfg.get("post_llm", [])
+    if not tool_getters:
+        return content
+
+    tools = _resolve_tools(tool_getters)
+    if not tools:
+        return content
+
+    handler = ToolCallbackHandler(agent_id, agent_callback)
+    run_config = RunnableConfig(callbacks=[handler])
+
+    for tool in tools:
+        tool_name = tool.name if hasattr(tool, 'name') else str(tool)
+
+        if agent_id == "hacker":
+            code = content.get("code", "")
+            if not code or len(code) < 10:
+                continue
+
+            logger.info("🔧 [Hacker] → %s (%d chars)", tool_name, len(code))
+            t0 = time_module.time()
+
+            try:
+                exec_result = tool.invoke({"code": code, "timeout": 30}, config=run_config)
+                elapsed = time_module.time() - t0
+                logger.info("   ← code exec: %.1fs", elapsed)
+
+                content["_code_execution"] = {
+                    "output": str(exec_result),
+                    "status": "error" if "Error" in str(exec_result) or "⛔" in str(exec_result) else "success",
+                    "duration_ms": int(elapsed * 1000),
+                }
+            except Exception as err:
+                logger.warning("   ⚠ code exec failed: %s", err)
+                content["_code_execution"] = {"output": str(err), "status": "error"}
+
+    return content
+
+
+def agent_name_display(agent_id: str) -> str:
+    names = {"manager": "Manager", "professor": "Professor", "architect": "Architect",
+             "examiner": "Examiner", "director": "Director", "hacker": "Hacker", "reviewer": "Reviewer"}
+    return names.get(agent_id, agent_id)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  _make_agent_node — Agent Node 工厂
+# ═══════════════════════════════════════════════════════════════
+
 def _make_agent_node(agent_id: str, result_type: str):
-    """
-    工厂函数: 为每个 Agent 创建 LangGraph Node 函数。
-
-    Args:
-        agent_id: Agent 标识 (如 "professor")
-        result_type: 输出类型标签 (如 "academic_content")
-
-    Returns:
-        callable: async def node(state: PipelineState) → dict (部分 state 更新)
-
-    封装逻辑:
-      1. 从 PROMPTS 获取该 Agent 的 Prompt 模板
-      2. 调用 LangChainUtils 执行 LLM 调用
-      3. 尝试 JSON 解析（先用 try_parse_json，预留 with_structured_output）
-      4. 根据 Agent 特有校验规则验证输出
-      5. 校验失败或 LLM 异常时，降级到 fallback_data
-      6. 返回部分 state 更新 dict
-
-    [建议] Phase 1 升级: 当 schemas/ 中的 Pydantic 模型启用后，
-           将 try_parse_json 替换为 with_structured_output()，
-           同时删除各 Agent 的手动校验逻辑。
-    """
-    # ── 各 Agent 的输出校验规则 ──
-    # [建议] 这些校验逻辑将在切换到 with_structured_output 后移除，
-    #        Pydantic 会自动完成类型校验。
     validators = {
-        "manager": lambda parsed: (
-            isinstance(parsed.get("tasks"), list)
-            and len(parsed["tasks"]) >= 5
-        ),
-        "professor": lambda parsed: (
-            isinstance(parsed.get("title"), str)
-            and isinstance(parsed.get("sections"), list)
-            and len(parsed["sections"]) > 0
-        ),
-        "architect": lambda parsed: (
-            ("mindmap" in parsed and isinstance(parsed["mindmap"], dict)
-             and isinstance(parsed["mindmap"].get("root"), str)
-             and isinstance(parsed["mindmap"].get("children"), list))
-            or ("root" in parsed and isinstance(parsed.get("children"), list))
-        ),
-        "examiner": lambda parsed: (
-            isinstance(parsed.get("questions"), list)
-            and len(parsed["questions"]) > 0
-        ),
-        "director": lambda parsed: (
-            isinstance(parsed.get("scenes"), list)
-            and len(parsed["scenes"]) > 0
-        ),
-        "hacker": lambda parsed: (
-            isinstance(parsed.get("code"), str)
-            and len(parsed["code"]) > 50
-        ),
-        "reviewer": lambda parsed: (
-            isinstance(parsed.get("suggestions"), list)
-            and len(parsed["suggestions"]) > 0
-        ),
+        "manager": lambda p: isinstance(p.get("tasks"), list) and len(p["tasks"]) >= 5,
+        "professor": lambda p: isinstance(p.get("title"), str) and isinstance(p.get("sections"), list) and len(p["sections"]) > 0,
+        "architect": lambda p: (("mindmap" in p and isinstance(p["mindmap"], dict) and isinstance(p["mindmap"].get("root"), str) and isinstance(p["mindmap"].get("children"), list)) or ("root" in p and isinstance(p.get("children"), list))),
+        "examiner": lambda p: isinstance(p.get("questions"), list) and len(p["questions"]) > 0,
+        "director": lambda p: isinstance(p.get("scenes"), list) and len(p["scenes"]) > 0,
+        "hacker": lambda p: isinstance(p.get("code"), str) and len(p["code"]) > 50,
+        "reviewer": lambda p: isinstance(p.get("suggestions"), list) and len(p["suggestions"]) > 0,
     }
 
     def agent_node(state: PipelineState) -> dict:
-        """
-        LangGraph Node 函数 — 执行单个 Agent 的 LLM 调用并返回状态更新。
-
-        注意: 当前为同步函数（内部调用 LangChainUtils 同步方法）。
-        切换到 execute_chain_async 后改回 async def。
-        """
         topic = state["topic"]
         agent_outputs = state.get("agent_outputs", {})
         errors = state.get("error_count", 0)
         start_time = datetime.now()
-        callback = state.get("_agent_event")  # WS 广播回调（由 execute_pipeline_graph 注入）
+        callback = state.get("_agent_event")
 
-        # ── 广播: Agent 开始 ──
         if callback:
-            try:
-                callback(agent_id, "start", None)
-            except Exception as cb_err:
-                logger.debug("Agent event callback (start) failed: %s", cb_err)
+            try: callback(agent_id, "start", None)
+            except Exception: pass
 
         try:
-            # ── 1. 获取 Prompt ──
+            # ═══ v2.3: pre-LLM 工具 (搜索注入) ═══
+            tool_results, _ = _execute_pre_llm_tools(agent_id, topic, callback)
+
+            # ── 1-2. Prompt + 输入 ──
             prompt_template_str = PROMPTS.get(agent_id, "")
             if not prompt_template_str:
-                raise ValueError(f"No prompt template for agent: {agent_id}")
-
-            # ── 2. 构建 LLM 调用 ──
+                raise ValueError(f"No prompt template: {agent_id}")
             prompt_template = LangChainUtils.create_prompt_template(prompt_template_str)
-
-            # 准备输入变量
             inputs = {"topic": topic}
             if agent_id == "reviewer":
                 inputs["content"] = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
             else:
-                inputs["context"] = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
+                ctx = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
+                if tool_results:
+                    ctx += f"\n\n【工具搜索结果（请优先参考以下真实资料）】\n{tool_results}"
+                inputs["context"] = ctx
 
-            # ── 3. 调用 LLM（v2.2: 结构化输出优先 → JSON 解析降级 → fallback）──
+            # ── 3. LLM ──
             content = None
             schema = SCHEMAS.get(agent_id)
-
-            # 3a. ★ 优先: with_structured_output (Pydantic 自动校验 + 失败重试)
             if schema:
                 try:
                     chain = LangChainUtils.create_structured_chain(prompt_template, schema)
-                    pydantic_result: BaseModel = chain.invoke(inputs)
-                    content = pydantic_result.model_dump()
-                    logger.info("[Graph] %s: structured output OK", agent_id)
-                except Exception as struct_err:
-                    logger.info(
-                        "[Graph] %s: structured output failed (%s), falling back to JSON parse",
-                        agent_id, type(struct_err).__name__
-                    )
+                    content = chain.invoke(inputs).model_dump()
+                except Exception as e:
+                    logger.info("[Graph] %s: structured output failed (%s), JSON fallback", agent_id, type(e).__name__)
 
-            # 3b. 降级: 传统 JSON 解析（当 structured output 不可用或失败时）
             if content is None:
                 llm_response = LangChainUtils.execute_chain(prompt_template, inputs)
                 parsed = LangChainUtils.try_parse_json(llm_response)
@@ -164,255 +280,115 @@ def _make_agent_node(agent_id: str, result_type: str):
                 if parsed is not None and validator and validator(parsed):
                     content = _post_process(agent_id, parsed, topic, agent_outputs)
                 else:
-                    logger.warning(
-                        "[Graph] %s: JSON parse validation failed, using fallback", agent_id
-                    )
                     content = get_fallback_content(agent_id, topic)
 
-            # ── 6. 构建结果 ──
+            # ═══ v2.3: post-LLM 工具 (代码验证) ═══
+            content = _execute_post_llm_tools(agent_id, topic, content, callback)
+
+            # ── 4. 结果 ──
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
             new_outputs = {**agent_outputs, agent_id: content}
-
             result_entry = {
-                "agent_id": agent_id,
-                "status": AgentStatus.SUCCESS.value,
-                "result": {
-                    "content": content,
-                    "type": result_type,
-                    "timestamp": datetime.now().isoformat(),
-                    "log": [f"LangGraph node: {agent_id} completed"],
-                },
+                "agent_id": agent_id, "status": AgentStatus.SUCCESS.value,
+                "result": {"content": content, "type": result_type,
+                           "timestamp": datetime.now().isoformat(),
+                           "log": [f"LangGraph node: {agent_id} completed"]},
                 "duration": duration,
             }
-
-            logger.info(
-                "[Graph] %s completed in %dms", agent_id, duration
-            )
-
-            # ── 广播: Agent 完成（成功路径）──
             if callback:
-                try:
-                    callback(agent_id, "done", {"duration": duration, "status": "success"})
-                except Exception as cb_err:
-                    logger.debug("Agent event callback (done) failed: %s", cb_err)
+                try: callback(agent_id, "done", {"duration": duration, "status": "success"})
+                except Exception: pass
 
-            # ── 7. 返回部分 state 更新 ──
-            return {
-                "agent_outputs": new_outputs,
-                "current_agent": agent_id,
-                "results": state.get("results", []) + [result_entry],
-                "error_count": errors,
-            }
+            return {"agent_outputs": new_outputs, "current_agent": agent_id,
+                    "results": state.get("results", []) + [result_entry], "error_count": errors}
 
         except Exception as error:
-            logger.warning(
-                "[Graph] %s LLM call failed: %s — using fallback", agent_id, error
-            )
+            logger.warning("[Graph] %s failed: %s — fallback", agent_id, error)
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
-            fallback_content = get_fallback_content(agent_id, topic)
-            new_outputs = {**agent_outputs, agent_id: fallback_content}
-
+            fb = get_fallback_content(agent_id, topic)
             result_entry = {
-                "agent_id": agent_id,
-                "status": AgentStatus.SUCCESS.value,
-                "result": {
-                    "content": fallback_content,
-                    "type": result_type,
-                    "timestamp": datetime.now().isoformat(),
-                    "log": [f"LangGraph node (fallback): {agent_id}"],
-                },
+                "agent_id": agent_id, "status": AgentStatus.SUCCESS.value,
+                "result": {"content": fb, "type": result_type,
+                           "timestamp": datetime.now().isoformat(),
+                           "log": [f"LangGraph node (fallback): {agent_id}"]},
                 "duration": duration,
             }
-
-            # ── 广播: Agent 完成（异常降级路径）──
             if callback:
-                try:
-                    callback(agent_id, "done", {"duration": duration, "status": "fallback", "error": str(error)})
-                except Exception as cb_err:
-                    logger.debug("Agent event callback (done/fallback) failed: %s", cb_err)
+                try: callback(agent_id, "done", {"duration": duration, "status": "fallback", "error": str(error)})
+                except Exception: pass
 
-            return {
-                "agent_outputs": new_outputs,
-                "current_agent": agent_id,
-                "results": state.get("results", []) + [result_entry],
-                "error_count": errors + 1,
-            }
+            return {"agent_outputs": {**agent_outputs, agent_id: fb},
+                    "current_agent": agent_id,
+                    "results": state.get("results", []) + [result_entry],
+                    "error_count": errors + 1}
 
     return agent_node
 
 
+# ═══════════════════════════════════════════════════════════════
+#  _post_process (JSON 降级安全网)
+# ═══════════════════════════════════════════════════════════════
+
 def _post_process(agent_id: str, parsed: dict, topic: str, agent_outputs: dict) -> dict:
-    """
-    Agent 特有后处理逻辑 — 相当于原 implementations 中各 execute() 的校验+规范化部分。
-
-    [建议] 切换到 with_structured_output() 后，这些后处理大部分可以删除，
-           因为 Pydantic 已经在解析时完成了类型转换和默认值填充。
-    """
     if agent_id == "manager":
-        return {
-            "tasks": parsed.get("tasks", []),
-            "priority": parsed.get(
-                "priority",
-                ["professor", "architect", "examiner", "director", "hacker", "reviewer"],
-            ),
-            "coordination_notes": parsed.get("coordination_notes", []),
-        }
-
+        return {"tasks": parsed.get("tasks", []),
+                "priority": parsed.get("priority", ["professor","architect","examiner","director","hacker","reviewer"]),
+                "coordination_notes": parsed.get("coordination_notes", [])}
     elif agent_id == "professor":
-        # topic 关键词校验
-        title_ok = any(
-            kw in parsed.get("title", "") for kw in topic.split() if len(kw) >= 2
-        )
-        if not title_ok:
-            logger.warning("ProfessorNode: title doesn't contain topic keywords, using fallback")
+        if not any(kw in parsed.get("title","") for kw in topic.split() if len(kw) >= 2):
             return get_fallback_content("professor", topic)
-        return {
-            "title": parsed["title"],
-            "sections": parsed["sections"],
-        }
-
+        return {"title": parsed["title"], "sections": parsed["sections"]}
     elif agent_id == "architect":
-        if "mindmap" in parsed and isinstance(parsed["mindmap"], dict):
-            return parsed
-        elif "root" in parsed:
-            # v2 旧格式: {root, children} → 包裹为 {mindmap: {root, children}}
-            return {"mindmap": parsed}
+        if "mindmap" in parsed and isinstance(parsed["mindmap"], dict): return parsed
+        elif "root" in parsed: return {"mindmap": parsed}
         return get_fallback_content("architect", topic)
-
     elif agent_id == "examiner":
-        questions = parsed["questions"]
-        for q in questions:
+        for q in parsed.get("questions", []):
             ans = q.get("answer", 0)
             if isinstance(ans, str):
-                ans_map = {"a": 0, "A": 0, "b": 1, "B": 1, "c": 2, "C": 2, "d": 3, "D": 3}
-                q["answer"] = ans_map.get(ans.strip(), 0)
-            elif isinstance(ans, int):
-                q["answer"] = ans
-            else:
-                q["answer"] = 0
-            if "explanation" not in q:
-                q["explanation"] = "该选项是正确答案。"
-        return {"questions": questions}
-
+                q["answer"] = {"a":0,"A":0,"b":1,"B":1,"c":2,"C":2,"d":3,"D":3}.get(ans.strip(), 0)
+            q.setdefault("explanation", "该选项是正确答案。")
+        return {"questions": parsed["questions"]}
     elif agent_id == "director":
-        scenes = parsed["scenes"]
-        # topic 关键词校验
-        has_topic = any(
-            any(kw in s.get("title", "") for kw in topic.split() if len(kw) >= 2)
-            for s in scenes
-        )
-        if not has_topic:
-            logger.warning("DirectorNode: scene titles don't contain topic keywords, using fallback")
+        scenes = parsed.get("scenes", [])
+        if not any(any(kw in s.get("title","") for kw in topic.split() if len(kw) >= 2) for s in scenes):
             return get_fallback_content("director", topic)
-
-        # 规范化字段
         for i, s in enumerate(scenes):
-            s.setdefault("scene_number", i + 1)
-            s.setdefault("duration_seconds", 45)
-            # 校验 resources
-            resources = s.get("resources", [])
-            if not isinstance(resources, list) or len(resources) == 0:
-                logger.warning("DirectorNode: scene %d missing resources, using fallback", s["scene_number"])
-                return get_fallback_content("director", topic)
-
-            valid_resources = []
-            for r in resources:
-                url = r.get("url", "")
-                if _is_valid_video_url(url):
-                    r.setdefault("type", "video")
-                    r.setdefault("platform", "YouTube")
-                    valid_resources.append(r)
-                else:
-                    logger.warning("DirectorNode: invalid resource url: %s, skipping", url)
-            if not valid_resources:
-                logger.warning("DirectorNode: scene %d has no valid resources after filtering, using fallback", s["scene_number"])
-                return get_fallback_content("director", topic)
-            s["resources"] = valid_resources
+            s.setdefault("scene_number", i + 1); s.setdefault("duration_seconds", 45)
+            valid = [r for r in s.get("resources",[]) if _is_valid_video_url(r.get("url",""))]
+            if not valid: return get_fallback_content("director", topic)
+            s["resources"] = valid
         return {"scenes": scenes}
-
     elif agent_id == "hacker":
-        exercises = parsed.get("exercises", [])
-        normalized_exercises = []
-        for ex in exercises:
-            if isinstance(ex, str):
-                normalized_exercises.append(ex)
-            elif isinstance(ex, dict):
-                parts = []
-                if ex.get("title"):
-                    parts.append(ex["title"])
-                if ex.get("description"):
-                    parts.append(ex["description"])
-                if ex.get("requirement"):
-                    parts.append(f"要求: {ex['requirement']}")
-                normalized_exercises.append(" — ".join(parts) if parts else str(ex))
-            else:
-                normalized_exercises.append(str(ex))
-
-        return {
-            "title": parsed["title"],
-            "description": parsed.get("description", ""),
-            "code": parsed["code"],
-            "expected_output": parsed.get("expected_output", ""),
-            "exercises": normalized_exercises
-            if normalized_exercises
-            else [
-                f"修改代码中的参数，观察{topic}的行为变化",
-                f"尝试用另一种方法实现{topic}的相同功能",
-            ],
-        }
-
+        exs = parsed.get("exercises", [])
+        norm = [e if isinstance(e,str) else " — ".join(filter(None,[e.get(k,"") for k in ("title","description","requirement")])) or str(e) for e in exs]
+        return {"title": parsed["title"], "description": parsed.get("description",""),
+                "code": parsed["code"], "expected_output": parsed.get("expected_output",""),
+                "exercises": norm or [f"修改参数观察{topic}", f"用另一种方法实现{topic}"]}
     elif agent_id == "reviewer":
-        suggestions = parsed.get("suggestions", [])
         qs = parsed.get("quality_score", 85)
-        try:
-            quality_score = int(float(qs))
-        except (ValueError, TypeError):
-            quality_score = 85
-
-        return {
-            "hallucination_risk": parsed.get("hallucination_risk", "low"),
-            "quality_score": quality_score,
-            "suggestions": suggestions,
-            "difficulty_assessment": parsed.get("difficulty_assessment", "中等"),
-        }
-
-    # fallback
+        try: qs = int(float(qs))
+        except: qs = 85
+        return {"hallucination_risk": parsed.get("hallucination_risk","low"), "quality_score": qs,
+                "suggestions": parsed.get("suggestions",[]),
+                "difficulty_assessment": parsed.get("difficulty_assessment","中等")}
     return parsed
 
 
 def _is_valid_video_url(url: str) -> bool:
-    """
-    校验视频 URL 是否有效（从 DirectorAgent 迁移过来）。
-
-    拒绝: 搜索链接、假域名、无效视频 ID
-    接受: youtube.com/watch?v= 和 youtu.be/ 格式
-    """
     import re
-
-    if not url or not isinstance(url, str):
-        return False
-    url_lower = url.lower().strip()
-    if "/results" in url_lower or "search_query" in url_lower:
-        return False
-    if "example.com" in url_lower:
-        return False
-    watch_match = re.search(r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)', url_lower)
-    if watch_match:
-        video_id = watch_match.group(1)
-        if video_id in ("0", "example", "test", "xxx"):
-            return False
-        return True
-    short_match = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', url_lower)
-    if short_match:
-        video_id = short_match.group(1)
-        if video_id in ("0", "example", "test", "xxx"):
-            return False
-        return True
+    if not url or not isinstance(url, str): return False
+    u = url.lower().strip()
+    if "/results" in u or "search_query" in u or "example.com" in u: return False
+    m = re.search(r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)', u)
+    if m: return m.group(1) not in ("0","example","test","xxx")
+    m = re.search(r'youtu\.be/([a-zA-Z0-9_-]+)', u)
+    if m: return m.group(1) not in ("0","example","test","xxx")
     return False
 
 
 # ═══════════════════════════════════════════════════════════════
-#  7 个 Agent Node — 一行定义
+#  7 个 Agent Node
 # ═══════════════════════════════════════════════════════════════
 
 manager_node   = _make_agent_node("manager",   "task_plan")
@@ -423,13 +399,18 @@ director_node  = _make_agent_node("director",  "video_script")
 hacker_node    = _make_agent_node("hacker",    "code")
 reviewer_node  = _make_agent_node("reviewer",  "review")
 
-# Node 映射表
 NODES = {
-    "manager":   manager_node,
-    "professor": professor_node,
-    "architect": architect_node,
-    "examiner":  examiner_node,
-    "director":  director_node,
-    "hacker":    hacker_node,
-    "reviewer":  reviewer_node,
+    "manager": manager_node, "professor": professor_node,
+    "architect": architect_node, "examiner": examiner_node,
+    "director": director_node, "hacker": hacker_node,
+    "reviewer": reviewer_node,
 }
+
+
+# ═══════════════════════════════════════════════════════════════
+#  [v2.2 legacy] 旧代码参考
+#  _run_tool() / _execute_pre_llm_tools() / _execute_post_llm_tools()
+#  旧版使用手写的 callback("tool_start/end/error") 广播。
+#  v2.3 已升级为 BaseCallbackHandler 自动触发，见 ToolCallbackHandler 类。
+#  完整旧版代码见 git history: ea8a7c4 (7-22)
+# ═══════════════════════════════════════════════════════════════

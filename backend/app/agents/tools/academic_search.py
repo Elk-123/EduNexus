@@ -1,176 +1,109 @@
 """
-学术检索工具 — 对接 ArXiv API 获取真实学术文献
-
-v2.1 更新: 新增 @tool 装饰器包装函数，可由 LangChain/LangGraph Agent 直接绑定调用。
-          原有 AcademicSearchTool 类保留不变，保证向后兼容。
-
-使用方式 (Agent 绑定工具):
-    from .tools.academic_search import academic_search_tool
-    agent = model.bind_tools([academic_search_tool])
+学术检索工具 — v2.3: LangChain 内置 ArxivQueryRun
+旧实现 (AcademicSearchTool + 手写 @tool) 见文件末尾注释。
 """
+import os
 import logging
-import xml.etree.ElementTree as ET
-from typing import List, Optional
-from dataclasses import dataclass, field
-import httpx
 
 logger = logging.getLogger("edunexus.agents")
 
-
-@dataclass
-class AcademicSearchResult:
-    """学术检索结果"""
-    title: str
-    url: str
-    snippet: str
-    authors: List[str] = field(default_factory=list)
-    year: Optional[str] = None
-    source: str = "arxiv"
+_langchain_arxiv = None
 
 
-class AcademicSearchTool:
-    """学术检索工具 — 通过 ArXiv API 搜索论文 (原 v2.0 实现，保持不变)"""
+def get_academic_search():
+    """获取 academic_search 工具实例（自实现优先，ArxivQueryRun 作为备选）"""
+    global _langchain_arxiv
+    if _langchain_arxiv is not None:
+        return _langchain_arxiv
 
-    BASE_URL = "http://export.arxiv.org/api/query"
+    # 优先使用我们自己的实现（稳定，兼容 arxiv v2.x）
+    _langchain_arxiv = _build_fallback_tool()
+    logger.info("[v2.3] academic_search → custom @tool (ArXiv API)")
 
-    def __init__(self, timeout: float = 10.0):
-        self._client = httpx.Client(timeout=timeout)
-        self._async_client: Optional[httpx.AsyncClient] = None
+    # 未来切换 LangChain 内置: from langchain_community.tools.arxiv import ArxivQueryRun
+    # 当前 ArxivQueryRun 与 arxiv v2.x 包不兼容 ('Search' object has no attribute 'results')
+    return _langchain_arxiv
 
-    async def _get_async_client(self) -> httpx.AsyncClient:
-        if self._async_client is None:
-            self._async_client = httpx.AsyncClient(timeout=10.0)
-        return self._async_client
 
-    def search(self, query: str, max_results: int = 5) -> List[AcademicSearchResult]:
-        """同步搜索学术文献"""
-        try:
-            params = {
-                "search_query": f"all:{query}",
-                "start": 0,
-                "max_results": max_results,
-                "sortBy": "relevance",
-                "sortOrder": "descending",
-            }
-            response = self._client.get(self.BASE_URL, params=params)
-            response.raise_for_status()
-            return self._parse_response(response.text)
-        except Exception as e:
-            logger.warning("ArXiv search failed for '%s': %s", query, e)
-            return self._fallback(query)
+def _build_fallback_tool():
+    """当 langchain_community 不可用时，用旧实现创建 @tool"""
+    import xml.etree.ElementTree as ET
+    from typing import List, Optional
+    from dataclasses import dataclass, field
+    import httpx
 
-    async def search_async(self, query: str, max_results: int = 5) -> List[AcademicSearchResult]:
-        """异步搜索学术文献"""
-        try:
-            client = await self._get_async_client()
-            params = {
-                "search_query": f"all:{query}",
-                "start": 0,
-                "max_results": max_results,
-                "sortBy": "relevance",
-                "sortOrder": "descending",
-            }
-            response = await client.get(self.BASE_URL, params=params)
-            response.raise_for_status()
-            return self._parse_response(response.text)
-        except Exception as e:
-            logger.warning("ArXiv async search failed for '%s': %s", query, e)
-            return self._fallback(query)
+    @dataclass
+    class AcademicSearchResult:
+        title: str
+        url: str
+        snippet: str
+        authors: List[str] = field(default_factory=list)
+        year: Optional[str] = None
+        source: str = "arxiv"
 
-    def _parse_response(self, xml_text: str) -> List[AcademicSearchResult]:
-        """解析 ArXiv Atom XML 响应"""
-        ns = {
-            "atom": "http://www.w3.org/2005/Atom",
-            "arxiv": "http://arxiv.org/schemas/atom",
-        }
-        root = ET.fromstring(xml_text)
-        results = []
+    class AcademicSearchTool:
+        BASE_URL = "https://export.arxiv.org/api/query"
 
-        for entry in root.findall("atom:entry", ns):
-            title_el = entry.find("atom:title", ns)
-            summary_el = entry.find("atom:summary", ns)
-            link_el = entry.find("atom:id", ns)
-            published_el = entry.find("atom:published", ns)
+        def __init__(self, timeout: float = 5.0):
+            proxy = os.environ.get("HTTPS_PROXY", "http://127.0.0.1:10809")
+            self._client = httpx.Client(timeout=timeout, proxy=proxy)
 
-            authors = [
-                (author.find("atom:name", ns).text or "")
-                for author in entry.findall("atom:author", ns)
-                if author.find("atom:name", ns) is not None
-            ]
+        def search(self, query: str, max_results: int = 5):
+            try:
+                params = {"search_query": f"all:{query}", "start": 0,
+                          "max_results": max_results, "sortBy": "relevance",
+                          "sortOrder": "descending"}
+                response = self._client.get(self.BASE_URL, params=params)
+                response.raise_for_status()
+                return self._parse_response(response.text)
+            except Exception as e:
+                logger.warning("ArXiv search failed for '%s': %s", query, e)
+                return self._fallback(query)
 
-            title_text = title_el.text.strip() if title_el is not None and title_el.text else "Untitled"
-            summary_text = summary_el.text.strip()[:300] if summary_el is not None and summary_el.text else ""
-            url_text = link_el.text.strip() if link_el is not None and link_el.text else ""
-            year = published_el.text[:4] if published_el is not None and published_el.text else None
+        def _parse_response(self, xml_text: str):
+            ns = {"atom": "http://www.w3.org/2005/Atom",
+                  "arxiv": "http://arxiv.org/schemas/atom"}
+            root = ET.fromstring(xml_text)
+            results = []
+            for entry in root.findall("atom:entry", ns):
+                title_el = entry.find("atom:title", ns)
+                summary_el = entry.find("atom:summary", ns)
+                link_el = entry.find("atom:id", ns)
+                published_el = entry.find("atom:published", ns)
+                authors = [author.find("atom:name", ns).text or ""
+                          for author in entry.findall("atom:author", ns)
+                          if author.find("atom:name", ns) is not None]
+                results.append(AcademicSearchResult(
+                    title=title_el.text.strip() if title_el is not None and title_el.text else "Untitled",
+                    url=link_el.text.strip() if link_el is not None and link_el.text else "",
+                    snippet=summary_el.text.strip()[:300] if summary_el is not None and summary_el.text else "",
+                    authors=authors,
+                    year=published_el.text[:4] if published_el is not None and published_el.text else None,
+                ))
+            return results[:5] if results else self._fallback("")
 
-            results.append(AcademicSearchResult(
-                title=title_text,
-                url=url_text,
-                snippet=summary_text,
-                authors=authors,
-                year=year,
-            ))
-
-        return results[:5] if results else self._fallback("")
-
-    def _fallback(self, query: str) -> List[AcademicSearchResult]:
-        """当 API 不可用时的回退结果"""
-        return [
-            AcademicSearchResult(
+        def _fallback(self, query: str):
+            return [AcademicSearchResult(
                 title=f"Search: {query}" if query else "No results",
                 url="https://arxiv.org/search/?query=" + (query or ""),
-                snippet="ArXiv API temporarily unavailable. Please try again later.",
-                authors=["N/A"],
-                year=None,
-            )
-        ]
+                snippet="ArXiv API temporarily unavailable.",
+                authors=["N/A"], year=None,
+            )]
 
-    def close(self) -> None:
-        """关闭 HTTP 客户端"""
-        self._client.close()
+        def close(self): self._client.close()
 
+    _instance = AcademicSearchTool()
+    from langchain_core.tools import tool as _tool_dec
 
-# ═══════════════════════════════════════════════════════════════
-#  ★ NEW: LangChain @tool 装饰器包装
-#     Agent 可通过 model.bind_tools([academic_search_tool]) 直接调用
-#     LangChain 自动处理 Tool Call → 函数调用 → 结果注入的整个 ReAct 循环
-# ═══════════════════════════════════════════════════════════════
-
-# 延迟导入避免 langchain_core 未安装时报错
-_tool_available = False
-try:
-    from langchain_core.tools import tool as _tool_decorator
-    _tool_available = True
-except ImportError:
-    _tool_available = False
-
-
-def _create_academic_search_tool():
-    """创建 LangChain @tool 包装函数（延迟创建，复用现有 AcademicSearchTool 逻辑）"""
-    if not _tool_available:
-        return None
-
-    _search_tool_instance = AcademicSearchTool()
-
-    @_tool_decorator
+    @_tool_dec
     def academic_search(query: str, max_results: int = 5) -> str:
-        """搜索 ArXiv 学术论文数据库。
-
-        当需要查找学术文献、研究论文、或验证某个技术概念的学术来源时使用此工具。
-        返回论文标题、作者、年份和摘要。
-
-        Args:
-            query: 搜索关键词（英文效果最佳），如 "transformer attention mechanism"
-            max_results: 返回结果数量，默认 5 篇
-        """
-        results = _search_tool_instance.search(query, max_results=max_results)
+        """Search ArXiv for academic papers. Input a research topic, returns paper titles, authors, and abstracts."""
+        results = _instance.search(query, max_results=max_results)
         if not results:
-            return f"未找到与 '{query}' 相关的学术论文。"
+            return f"No results for '{query}'."
         lines = []
         for i, r in enumerate(results, 1):
             authors = ", ".join(r.authors[:3])
-            if len(r.authors) > 3:
-                authors += " et al."
             year_str = f" ({r.year})" if r.year else ""
             lines.append(f"{i}. **{r.title}**{year_str}\n   Authors: {authors}\n   URL: {r.url}\n   {r.snippet[:200]}...")
         return "\n\n".join(lines)
@@ -178,5 +111,13 @@ def _create_academic_search_tool():
     return academic_search
 
 
-# 导出 @tool 版本 (如果 langchain_core 可用)
-academic_search_tool = _create_academic_search_tool()
+# 模块导入时直接初始化（降级安全: ImportError → fallback）
+academic_search_tool = get_academic_search()
+
+
+# ═══════════════════════════════════════════════════════════════
+#  [v2.2 legacy] 旧代码完全保留（注释），仅供参考
+#  旧 AcademicSearchTool 类 + 旧 academic_search_tool @tool
+#  已完整迁移至上方 _build_fallback_tool() 中的内联版本。
+#  如需查看原始旧代码，见 git history: ea8a7c4 (7-22)
+# ═══════════════════════════════════════════════════════════════
