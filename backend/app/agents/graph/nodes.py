@@ -43,6 +43,10 @@ SCHEMAS: dict[str, type[BaseModel]] = {
     "reviewer": ReviewerOutput,
 }
 
+# ── 反思闭环 ──
+REFLECTION_THRESHOLD = 70  # 低于此分触发重写
+MAX_RETRIES = 2
+
 # ── Tool Use 配置 ──
 # [已注释] get_academic_search — ArXivQueryRun 与 arxiv v2.x 不兼容，改用 web_search
 # from ..tools.academic_search import get_academic_search
@@ -261,6 +265,21 @@ def _make_agent_node(agent_id: str, result_type: str):
                 ctx = json.dumps(agent_outputs, ensure_ascii=False, indent=2)
                 if tool_results:
                     ctx += f"\n\n【工具搜索结果（请优先参考以下真实资料）】\n{tool_results}"
+
+                # ═══ v2.4: 反思闭环 — Professor 收到低分反馈时重写 ═══
+                if agent_id == "professor":
+                    feedback = state.get("reviewer_feedback")
+                    retries = state.get("retry_count", 0)
+                    if feedback and retries < MAX_RETRIES:
+                        logger.info("[Reflect] Professor retry #%d — injecting reviewer feedback", retries)
+                        ctx += (
+                            f"\n\n【⚠️ 质量审查反馈 — 第{retries}次修改】\n"
+                            f"上次评分: {feedback.get('score', 0)}/100\n"
+                            f"改进建议:\n" +
+                            "\n".join(f"- {s}" for s in feedback.get("suggestions", [])) +
+                            f"\n\n请根据以上建议重新生成教学内容，提高质量和深度。"
+                        )
+
                 inputs["context"] = ctx
 
             # ── 3. LLM ──
@@ -285,9 +304,25 @@ def _make_agent_node(agent_id: str, result_type: str):
             # ═══ v2.3: post-LLM 工具 (代码验证) ═══
             content = _execute_post_llm_tools(agent_id, topic, content, callback)
 
+            # ═══ v2.4: 反思闭环 — Reviewer 决策 ───
+            extra = {}
+            if agent_id == "reviewer":
+                score = content.get("quality_score", 85)
+                retries = state.get("retry_count", 0)
+                if score < REFLECTION_THRESHOLD and retries < MAX_RETRIES:
+                    logger.info("[Reflect] score=%d < 70 → 触发重试 #%d", score, retries + 1)
+                    extra["reviewer_feedback"] = {
+                        "score": score,
+                        "suggestions": content.get("suggestions", []),
+                        "difficulty_assessment": content.get("difficulty_assessment", ""),
+                    }
+                    extra["retry_count"] = 1
+                else:
+                    # 评分达标 → 清除反馈（防止旧反馈残留触发误重试）
+                    extra["reviewer_feedback"] = None
+
             # ── 4. 结果 ──
             duration = int((datetime.now() - start_time).total_seconds() * 1000)
-            new_outputs = {**agent_outputs, agent_id: content}
             result_entry = {
                 "agent_id": agent_id, "status": AgentStatus.SUCCESS.value,
                 "result": {"content": content, "type": result_type,
@@ -299,8 +334,8 @@ def _make_agent_node(agent_id: str, result_type: str):
                 try: callback(agent_id, "done", {"duration": duration, "status": "success"})
                 except Exception: pass
 
-            return {"agent_outputs": new_outputs, "current_agent": agent_id,
-                    "results": state.get("results", []) + [result_entry], "error_count": errors}
+            return {"agent_outputs": {agent_id: content}, "current_agent": agent_id,
+                    "results": [result_entry], "error_count": 0, **extra}
 
         except Exception as error:
             logger.warning("[Graph] %s failed: %s — fallback", agent_id, error)
@@ -317,10 +352,8 @@ def _make_agent_node(agent_id: str, result_type: str):
                 try: callback(agent_id, "done", {"duration": duration, "status": "fallback", "error": str(error)})
                 except Exception: pass
 
-            return {"agent_outputs": {**agent_outputs, agent_id: fb},
-                    "current_agent": agent_id,
-                    "results": state.get("results", []) + [result_entry],
-                    "error_count": errors + 1}
+            return {"agent_outputs": {agent_id: fb}, "current_agent": agent_id,
+                    "results": [result_entry], "error_count": 1}
 
     return agent_node
 

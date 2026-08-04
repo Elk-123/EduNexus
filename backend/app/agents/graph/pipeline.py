@@ -59,19 +59,32 @@ def build_pipeline() -> StateGraph:
             continue
         builder.add_node(agent_id, node_fn)
 
-    # ── Phase 1: 顺序边 ──
-    builder.set_entry_point(AGENT_ORDER[0])
-    for i in range(len(AGENT_ORDER) - 1):
-        builder.add_edge(AGENT_ORDER[i], AGENT_ORDER[i + 1])
-    builder.add_edge(AGENT_ORDER[-1], END)
+    # ── v2.4: 并行 + 反思闭环 ──
+    builder.set_entry_point("manager")
+    for agent_id in AGENT_ORDER[1:-1]:  # professor ~ hacker
+        builder.add_edge("manager", agent_id)
+        builder.add_edge(agent_id, "reviewer")
 
-    # ── [Phase 2 预留] 并行边 ──
-    # 将上面 6 行替换为:
-    # builder.set_entry_point("manager")
-    # for agent_id in AGENT_ORDER[1:-1]:  # professor ~ hacker
-    #     builder.add_edge("manager", agent_id)
-    #     builder.add_edge(agent_id, "reviewer")
-    # builder.add_edge("reviewer", END)
+    # 反思闭环: Reviewer 评分 < 70 → Professor 重写 → Reviewer 再评
+    def _should_retry(state: PipelineState) -> str:
+        feedback = state.get("reviewer_feedback")
+        retries = state.get("retry_count", 0)
+        if feedback and retries < 2:
+            logger.info("[Reflect] 触发重试 #%d → Professor", retries)
+            return "professor"
+        logger.info("[Reflect] 审查通过 (retries=%d) → END", retries)
+        return END
+
+    builder.add_conditional_edges("reviewer", _should_retry, {
+        "professor": "professor",
+        END: END,
+    })
+
+    # [v2.2 legacy] 顺序边 — 保留注释备查
+    # builder.set_entry_point(AGENT_ORDER[0])
+    # for i in range(len(AGENT_ORDER) - 1):
+    #     builder.add_edge(AGENT_ORDER[i], AGENT_ORDER[i + 1])
+    # builder.add_edge(AGENT_ORDER[-1], END)
 
     # ── [Phase 4 预留] Checkpoint ──
     # from langgraph.checkpoint.memory import MemorySaver
@@ -101,6 +114,8 @@ def create_initial_state(topic: str, context: Optional[dict] = None) -> Pipeline
         results=[],
         final_report=None,
         error_count=0,
+        retry_count=0,
+        reviewer_feedback=None,
     )
 
 

@@ -20,3 +20,5 @@ cd backend && uvicorn app.main:app --reload --port 8001  #启动后端
 9.构建CICD Pipeline
 10.完善项目文档，issues
 11.全平台发布一个月，开源。
+
+## 项目详细介绍看CLAUDE.md
